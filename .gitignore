@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# virtual environment
+venv/
+
+# data (raw/interim/processed datasets, splits — not tracked, fetched/generated locally)
+data/
+
+# generated run artifacts
+outputs/
+logs/
