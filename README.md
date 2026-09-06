@@ -21,12 +21,11 @@ age in item content and informant, so the two streams must declare the same band
 
 ## The two streams
 
-The repository is organised branch-first. The streams are trained, evaluated and
-reported **independently** — no public dataset links questionnaire responses to
-facial images of the same individuals, so there is no fusion layer and no
-learned combination rule.
+The streams are trained, evaluated and reported **independently** — no public
+dataset links questionnaire responses to facial images of the same individuals,
+so there is no fusion layer and no learned combination rule.
 
-### `src/questionnaire/` — primary
+### Questionnaire stream — `experiments/questionnaire_models/` — primary
 
 Tabular classification over AQ-10-Child item responses. This stream is primary on
 evidential grounds: its inputs derive from a validated instrument. Models are
@@ -40,7 +39,7 @@ checked across resamples.
 > task degenerates into recovering the scoring rule. Any accuracy above ~95%
 > should trigger a leakage check before celebration.
 
-### `src/images/` — secondary, gated
+### Facial-image stream — secondary, gated
 
 Facial image classification, **conditional on the Phase 0 audit passing**. The
 dataset's cases and controls come from different sources, so a classifier can
@@ -48,15 +47,17 @@ score highly by learning acquisition context rather than facial phenotype. Three
 probes decide whether this stream is a screening component or a documented
 negative result — either outcome is a publishable finding:
 
-| Probe | Method | Interpretation |
-|---|---|---|
-| Blur | Train on images blurred beyond visual recognisability | Above chance ⇒ signal is not facial |
-| Background | Mask detected faces, train on the remainder | Above chance ⇒ signal is context |
-| Metadata | Compare dimensions, file size, JPEG quality, colour stats, EXIF by class | Systematic difference ⇒ separate acquisition |
+| Probe | Folder | Method | Interpretation |
+|---|---|---|---|
+| Blur | `experiments/blurred_images/` | Train on images blurred beyond visual recognisability | Above chance ⇒ signal is not facial |
+| Background | `experiments/background_images/` | Mask detected faces, train on the remainder | Above chance ⇒ signal is context |
+| Metadata | `experiments/metadata_probe/` | Compare dimensions, file size, JPEG quality, colour stats, EXIF by class | Systematic difference ⇒ separate acquisition |
 
-Perceptual-hash deduplication runs across classes alongside these. Grad-CAM is
-retained as an **internal diagnostic only, never user-facing** — a heat map over
-a child's face marks image regions, not clinically interpretable features.
+The unmodified-image model itself lives in `experiments/intact_images/`, and only
+gets trained once the three audits above clear. Perceptual-hash deduplication
+runs across classes alongside these. Grad-CAM is retained as an **internal
+diagnostic only, never user-facing** — a heat map over a child's face marks
+image regions, not clinically interpretable features.
 
 ---
 
@@ -64,39 +65,36 @@ a child's face marks image regions, not clinically interpretable features.
 
 ```
 .
-├── config/                     # dataset paths, hyperparameter grids, run configs
+├── configs/                     # paths, settings
 ├── data/
-│   ├── questionnaire/          # CSV written by questionnaire.ipynb — not committed
-│   └── images/                 # Mendeley archive, unpacked here — not committed
-├── notebooks/
-│   └── questionnaire.ipynb     # fetches UCI data, writes data/questionnaire/*.csv
-├── src/
-│   ├── common/                 # branch-agnostic machinery
-│   │   ├── utils/              # io, seeding, logging, path resolution
-│   │   ├── validation/         # repeated stratified nested CV (5 outer × 3 inner × 10)
-│   │   ├── metrics/            # sensitivity, specificity, PPV/NPV, ECE, thresholds
-│   │   └── calibration/        # Platt scaling
-│   ├── questionnaire/
-│   │   ├── audit/              # circularity, base rate, missingness
-│   │   ├── preprocessing/
-│   │   ├── models/
-│   │   ├── explainability/     # SHAP — user-facing
-│   │   └── pipeline/
-│   └── images/
-│       ├── audit/              # blur, background, metadata, dedup probes
-│       ├── preprocessing/
-│       ├── models/
-│       ├── explainability/     # Grad-CAM — internal only
-│       └── pipeline/
-├── scripts/                    # CLI entry points
-├── outputs/                    # audit results, trained models, metrics, figures
-├── tests/
-└── logs/
+│   ├── raw/                     # untouched source data — not committed
+│   │   ├── questionnaire/       # CSV written by questionnaire.ipynb
+│   │   └── images/              # Mendeley archive, unpacked here
+│   ├── processed/                # cleaned / derived data
+│   └── splits/                   # train/test/val split files
+├── experiments/                  # one folder per approach — code + results together
+│   ├── questionnaire_models/     # logistic regression, tree, boosting, MLP
+│   ├── metadata_probe/           # audit: can metadata alone separate the classes?
+│   ├── intact_images/            # normal images
+│   ├── blurred_images/           # audit: blurred past recognisability
+│   └── background_images/        # audit: faces masked out
+├── notebooks/                    # exploration and visual analysis only
+├── outputs/                      # models, predictions, figures, logs
+├── reports/
+│   ├── proposal/
+│   └── final_report/
+└── src/                          # shared code imported by experiments
+    ├── data/                      # loading, preprocessing
+    ├── models/                    # model definitions, feature extraction
+    └── evaluation/                # metrics, cross-validation
 ```
 
-Both streams expose the same five stages, so anything added to one should have a
-counterpart in the other. Nothing branch-specific belongs in `src/common/` — if
-code names a dataset, a modality or a model family, it belongs to a branch.
+Each stream is now a set of `experiments/` folders — one per approach or audit —
+that keep their own code and results together, rather than a shared five-stage
+pipeline. Machinery with no dataset, modality or model family in its name
+(loading, feature extraction, metrics, cross-validation) belongs in `src/` and
+is imported by whichever experiments need it; anything that names one belongs
+in that experiment's own folder instead.
 
 ---
 
@@ -113,7 +111,7 @@ values are coded `?`, concentrated in `ethnicity` and `relation`.
 
 No manual download is needed. `questionnaire.ipynb` fetches the dataset directly
 through the [`ucimlrepo`](https://pypi.org/project/ucimlrepo/) package and writes
-it to a CSV under `data/questionnaire/`:
+it to a CSV under `data/raw/questionnaire/`:
 
 ```bash
 pip install ucimlrepo
@@ -124,15 +122,15 @@ from ucimlrepo import fetch_ucirepo
 autism_child = fetch_ucirepo(id=419)          # UCI dataset 419
 ```
 
-Run the notebook once to populate `data/questionnaire/` before any code in
-`src/questionnaire/` will work.
+Run the notebook once to populate `data/raw/questionnaire/` before any code in
+`experiments/questionnaire_models/` will work.
 
 ### Facial images — Mendeley `f9dycfvwbt` v2
 
 <https://data.mendeley.com/datasets/f9dycfvwbt/2>
 
 2,940 facial images of children, two classes, three folders. Download manually
-and unpack into `data/images/`.
+and unpack into `data/raw/images/`.
 
 **Provenance is a known problem, verified rather than assumed.** This set
 re-hosts the Kaggle ASD Children Facial Image Dataset; its original author stated
@@ -146,9 +144,11 @@ where feasible, and treat the Phase 0 audit as a gate, not a formality.
 
 ## Working order
 
-1. **Phase 0 audit first.** Run `src/questionnaire/audit/` and
-   `src/images/audit/` before any modelling. The image audit determines whether
-   that stream is built at all.
+1. **Phase 0 audit first.** Run the questionnaire circularity/base-rate check
+   (inside `experiments/questionnaire_models/`) and the image-side audits
+   (`experiments/metadata_probe/`, `experiments/blurred_images/`,
+   `experiments/background_images/`) before any modelling. The image audits
+   determine whether `experiments/intact_images/` is built at all.
 2. Hold out a stratified test set before anything else. Split images by subject
    where an identifier permits, and augment only after splitting.
 3. Train and compare; calibrate the winner.
