@@ -1,0 +1,33 @@
+# PyTorch (CUDA build) -- install first, from the PyTorch index:
+#   pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1
+torchvision==0.20.1
+
+numpy==2.0.2
+pandas==2.3.3
+scipy==1.13.1
+scikit-learn==1.6.1
+pillow==11.3.0
+matplotlib==3.9.4
+seaborn==0.13.2
+ImageHash==4.3.2
+
+# Face detection for the blurred_images / background_images experiments.
+# facenet-pytorch's declared dependency floors (numpy<2, pillow<10.3,
+# torch<2.3/torchvision<0.18) conflict with the CUDA stack above -- but the
+# library itself runs fine against the newer versions, so it is installed
+# with --no-deps to keep torch/numpy/pillow at the versions pinned above:
+#   pip install --no-deps facenet-pytorch==2.6.0
+# MTCNN (this package) is the primary face detector. opencv-python's Haar
+# cascade is kept only as a documented side-by-side comparison, not a
+# fallback -- see src/models/face_detect.py.
+facenet-pytorch==2.6.0
+opencv-python==4.10.0.84
+
+PyYAML==6.0.3
+pytest==8.4.2
+
+# Notebook execution
+ipykernel==6.31.0
+nbformat==5.10.4
+nbconvert==7.17.1
