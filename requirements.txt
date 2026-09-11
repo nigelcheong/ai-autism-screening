@@ -24,6 +24,16 @@ ImageHash==4.3.2
 facenet-pytorch==2.6.0
 opencv-python==4.10.0.84
 
+# Facial landmark detection for the face_landmarks experiment (Face Mesh,
+# 478 points). Its own opencv-contrib-python / numpy requirements are
+# unpinned upstream and would otherwise duplicate opencv-python above, so
+# it too is installed with --no-deps against the versions pinned here:
+#   pip install --no-deps mediapipe==1.0.1
+# The Face Landmarker model bundle itself is downloaded on first use (see
+# src/models/landmark_detect.py) and cached under outputs/face_landmarks/,
+# not committed to the repo.
+mediapipe==1.0.1
+
 PyYAML==6.0.3
 pytest==8.4.2
 
