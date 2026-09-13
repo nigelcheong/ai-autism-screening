@@ -34,6 +34,17 @@ opencv-python==4.10.0.84
 # not committed to the repo.
 mediapipe==1.0.1
 
+# SHAP explanations for the why_not_faces experiment's named-feature
+# model (TreeExplainer on HistGradientBoostingClassifier). Installed
+# with its full dependency set (numba/llvmlite for TreeExplainer's
+# compiled tree traversal, cloudpickle, slicer) -- none of it conflicts
+# with the pins above.
+shap==0.49.1
+numba==0.60.0
+llvmlite==0.43.0
+cloudpickle==3.1.2
+slicer==0.0.8
+
 PyYAML==6.0.3
 pytest==8.4.2
 
