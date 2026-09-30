@@ -34,6 +34,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -301,14 +302,17 @@ def evaluate(cfg: Config, model: nn.Module, paths: Sequence[Path], labels: Seque
 def _save_run_result(cfg: Config, name: str, result: Dict) -> None:
     """Cache one `run_published_protocol` / `run_corrected_protocol`-fold result to disk.
 
-    Model weights (`.pt`), training history (`.csv`), predictions
+    The whole model pickled (`.pkl`), training history (`.csv`), predictions
     (`.npz`), and everything else JSON-serialisable (`.json`, including
     `test_paths` where present) -- so `_load_run_result` can rebuild an
     identical `dict`, and re-running this experiment's notebook does not
     re-train.
     """
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
-    torch.save(result["model"].state_dict(), cfg.output_dir / f"{name}_model.pt")
+    # Whole-model pickle, moved to CPU on a copy so it loads without a GPU
+    # and `result["model"]` stays on its own device.
+    with open(cfg.output_dir / f"{name}_model.pkl", "wb") as f:
+        pickle.dump(copy.deepcopy(result["model"]).cpu(), f)
     result["history"].to_csv(cfg.output_dir / f"{name}_history.csv", index=False)
     np.savez(cfg.output_dir / f"{name}_predictions.npz", probs=result["probs"], true=result["true"])
 
@@ -318,12 +322,18 @@ def _save_run_result(cfg: Config, name: str, result: Dict) -> None:
 
 def _load_run_result(cfg: Config, name: str) -> Optional[Dict]:
     """Load a result `_save_run_result` cached, or `None` if no cache exists."""
-    model_path = cfg.output_dir / f"{name}_model.pt"
-    if not model_path.exists():
+    pkl_path = cfg.output_dir / f"{name}_model.pkl"
+    legacy_pt_path = cfg.output_dir / f"{name}_model.pt"
+    if pkl_path.exists():
+        with open(pkl_path, "rb") as f:
+            model = pickle.load(f)
+    elif legacy_pt_path.exists():
+        # Runs cached before the switch to `.pkl` hold only a state_dict.
+        model = build_model(cfg)
+        model.load_state_dict(torch.load(legacy_pt_path, map_location="cpu"))
+    else:
         return None
 
-    model = build_model(cfg)
-    model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.to(torch.device(cfg.cnn_device))
     model.eval()
 
