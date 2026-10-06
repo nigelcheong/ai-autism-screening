@@ -12,3 +12,5 @@ data/
 # generated run artifacts
 outputs/
 logs/
+scripts/
+
