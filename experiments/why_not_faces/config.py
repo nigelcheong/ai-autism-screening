@@ -48,6 +48,49 @@ FEATURE_GROUPS: Dict[str, Tuple[str, ...]] = {
     "pose": ("roll_deg", "yaw_proxy", "pitch_proxy"),
 }
 
+# Plot labels for every `FEATURE_GROUPS` entry -- display only; the raw
+# names stay the column/JSON keys everywhere else. Facial-shape distances
+# are measured in the eye-aligned frame, so they are in inter-ocular
+# distance (IOD) units.
+FEATURE_DISPLAY_NAMES: Dict[str, str] = {
+    # acquisition
+    "width": "Image width (px)",
+    "height": "Image height (px)",
+    "n_pixels": "Image pixel count",
+    "file_size_bytes": "File size (bytes)",
+    "bytes_per_pixel": "Bytes per pixel (compression)",
+    "sharpness": "Image sharpness",
+    # colour
+    "mean_r": "Mean red",
+    "mean_g": "Mean green",
+    "mean_b": "Mean blue",
+    "mean_luminance": "Mean brightness",
+    "std_luminance": "Brightness contrast (SD)",
+    "saturation_mean": "Mean colour saturation",
+    # framing
+    "box_area_fraction": "Face size (fraction of image)",
+    "box_centre_x": "Face position, horizontal",
+    "box_centre_y": "Face position, vertical",
+    "box_aspect": "Face box aspect ratio",
+    # facial_shape
+    "fwhr": "Facial width-to-height ratio",
+    "mouth_width": "Mouth width (IOD)",
+    "eye_to_mouth": "Eyes-to-mouth distance (IOD)",
+    "eye_to_nose": "Eyes-to-nose distance (IOD)",
+    "nose_to_mouth": "Nose-to-mouth distance (IOD)",
+    "nose_width": "Nose width (IOD)",
+    "philtrum_length": "Philtrum length (IOD)",
+    "palpebral_fissure_left": "Left eye width (IOD)",
+    "palpebral_fissure_right": "Right eye width (IOD)",
+    "intercanthal_over_iod": "Inner-eye-corner distance (IOD)",
+    "asymmetry": "Facial asymmetry",
+    # pose
+    "roll_deg": "Head roll (degrees)",
+    "yaw_proxy": "Head yaw (left/right turn)",
+    "pitch_proxy": "Head pitch (up/down tilt)",
+}
+assert set(FEATURE_DISPLAY_NAMES) == {name for names in FEATURE_GROUPS.values() for name in names}
+
 
 @dataclass(frozen=True)
 class Config:
