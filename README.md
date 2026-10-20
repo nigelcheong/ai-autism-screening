@@ -163,12 +163,3 @@ need one to two orders of magnitude more data than ~292 rows. Use Platt scaling
 rather than isotonic regression for the same reason.
 
 ---
-
-## Ethics and data handling
-
-Facial photographs of children are biometric information about minors. Retention,
-transfer and reuse for retraining must be settled before the image stream is
-built, and unit ethics approval — if required — has a lead time. Inferring a
-neurodevelopmental condition from facial appearance sits close to a discredited
-tradition, and favourable metrics do not answer that objection; it is addressed
-explicitly in the accompanying paper.
