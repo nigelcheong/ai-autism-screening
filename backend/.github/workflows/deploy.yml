@@ -1,0 +1,18 @@
+name: Deploy to Hugging Face Spaces
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**"]
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git subtree split --prefix=backend -b hf-backend-deploy
+          git push https://user:$HF_TOKEN@huggingface.co/spaces/your-username/autism-api hf-backend-deploy:main --force

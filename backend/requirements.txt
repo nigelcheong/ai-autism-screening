@@ -1,0 +1,22 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.35
+psycopg2-binary==2.9.9
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-jose[cryptography]==3.3.0
+cryptography==43.0.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.9
+slowapi==0.1.9
+supabase==2.7.4
+scikit-learn==1.9.0
+joblib==1.6.0
+pandas==3.0.6
+Pillow==12.3.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1
+torchvision==0.29.1
+shap==0.53.0
+scipy==1.18.1
