@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_staff, require_role, TenantContext
 from app.core.encryption import decrypt_json
+from app.core.instruments import referral_band_legend, referral_label_for_raw_score
 from app.core.risk_bands import BAND_LEGEND, describe_probability, short_label
 from app.core.time import utc_iso
 from app.core.uploads import heatmap_path, resolve_image_path, shap_diagram_path
@@ -18,27 +19,39 @@ from app.models.entities import DiagnosticSession, Hospital, Patient, SessionIma
 router = APIRouter(prefix="/internal/sessions", tags=["reports"])
 
 
+class ExplanationItem(BaseModel):
+    label: str
+    direction: str  # "increased" | "decreased"
+    magnitude: float  # 0-100, relative to this session's largest contribution
+    # A short human-readable rendering of the measured value behind this
+    # item, e.g. "1.87" or "73%" -- populated for the named-feature SHAP
+    # explanation; left blank for questionnaire answers (self-describing
+    # already) and pixel-region SHAP (no single concrete value to show).
+    detail: str | None = None
+
+
 class FeatureContribution(BaseModel):
     label: str
     value: str
     contributed_to_risk: bool
     image_data_url: str | None = None
     heatmap_data_url: str | None = None
-    # A larger, standalone image (not a small thumbnail like the two above):
-    # the photo enlarged with a 3x3 grid overlay and arrow callouts showing
-    # each region's SHAP contribution directly on the image.
+    # Larger, standalone images (not small thumbnails like the two above):
+    # facial_shape_diagram_data_url draws each facial-shape measurement's
+    # line (mouth width, nose width, palpebral fissures, etc.) directly on
+    # the photo; shap_diagram_data_url is the CNN pixel-region's 3x3 grid
+    # overlay with arrow callouts.
+    facial_shape_diagram_data_url: str | None = None
     shap_diagram_data_url: str | None = None
+    # This image's pixel-region SHAP (shap.GradientExplainer on the CNN's
+    # own pixels) -- a second, cruder explanation shown alongside the
+    # named-feature one in `explanation` below, with its own diagram above.
+    pixel_region_explanation: list[ExplanationItem] = []
 
 
 class SummaryStat(BaseModel):
     label: str
     value: str
-
-
-class ExplanationItem(BaseModel):
-    label: str
-    direction: str  # "increased" | "decreased"
-    magnitude: float  # 0-100, relative to this session's largest contribution
 
 
 class SessionReport(BaseModel):
@@ -52,6 +65,12 @@ class SessionReport(BaseModel):
     session_type: str
     risk_score: float | None
     risk_category: str | None
+    # Instrument-specific referral wording (e.g. "Specialist Review
+    # Recommended") shown instead of a bare percentage on the headline
+    # result -- questionnaire sessions only; None for image sessions, where
+    # the percentage stays.
+    result_label: str | None = None
+    result_tone: str | None = None
     model_version: str | None
     model_description: str
     created_at: str
@@ -60,6 +79,11 @@ class SessionReport(BaseModel):
     features: list[FeatureContribution]
     explanation: list[ExplanationItem]
     explanation_note: str
+    # Top non-facial factors (image quality, photo colour, framing, pose)
+    # the same named-feature model also weighed -- kept separate from
+    # `explanation` (facial-shape only) so they're never mistaken for a
+    # facial trait. Empty for questionnaire sessions.
+    other_factors: list[ExplanationItem] = []
     note: str
 
     class Config:
@@ -87,7 +111,7 @@ def _model_description(model_version: str | None) -> str:
         return f"Q-CHAT-10 Logistic Regression model (trained on {n} cases)"
     if model_version == "cnn_corrected_fold4_model":
         return (
-            "cnn_corrected_fold4_model — DenseNet-201 convolutional neural network "
+            "cnn_corrected_fold4_model: DenseNet-201 convolutional neural network "
             "(fine-tuned on facial images, cross-validation fold 4)"
         )
     return model_version
@@ -138,14 +162,20 @@ def get_session_report(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
     if ctx.role != "platform_admin" and str(session.hospital_id) != ctx.hospital_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your hospital's session")
+    return build_session_report(db, session)
 
+
+def build_session_report(db: Session, session: DiagnosticSession) -> SessionReport:
     patient = db.query(Patient).filter(Patient.id == session.patient_id).first()
 
     features: list[FeatureContribution] = []
     summary_stats: list[SummaryStat] = []
     explanation: list[ExplanationItem] = []
     explanation_note = ""
+    other_factors: list[ExplanationItem] = []
     note = ""
+    result_label: str | None = None
+    result_tone: str | None = None
 
     if session.session_type == "questionnaire" and session.question_responses_encrypted:
         data = decrypt_json(session.question_responses_encrypted)
@@ -176,22 +206,28 @@ def get_session_report(
                     )
                 )
             instrument_label = INSTRUMENT_NAMES.get(instrument, instrument or "")
+            referral = referral_label_for_raw_score(instrument, raw_score)
+            if referral:
+                result_label, result_tone = referral
             summary_stats = [
                 SummaryStat(label="Instrument used", value=instrument_label),
                 SummaryStat(label="Items scored as indicative", value=f"{raw_score} of {len(question_meta)}"),
                 SummaryStat(
                     label="Clinical referral cutoff",
-                    value=INSTRUMENT_CUTOFFS.get(instrument, "—"),
+                    value=INSTRUMENT_CUTOFFS.get(instrument, "N/A"),
                 ),
                 SummaryStat(
                     label="Model-predicted probability",
                     value=(
                         describe_probability(session.risk_score)
                         if session.risk_score is not None
-                        else "—"
+                        else "N/A"
                     ),
                 ),
-                SummaryStat(label="Likelihood bands", value=BAND_LEGEND),
+                SummaryStat(
+                    label="Referral bands",
+                    value=referral_band_legend(instrument) or BAND_LEGEND,
+                ),
             ]
             note = (
                 f"Scored using the {instrument_label} instrument. A checked item is a response "
@@ -199,7 +235,7 @@ def get_session_report(
                 "Question wording and options reflect what was actually shown at the time of this "
                 "scan, even if the question bank has since been edited. The likelihood category "
                 "shown above the chart is based on the instrument's own clinical cutoff score "
-                "(items scored as indicative vs. the referral cutoff) -- the model-predicted "
+                "(items scored as indicative vs. the referral cutoff). The model-predicted "
                 "probability is a separate, independent statistical estimate, and the two may not "
                 "always agree. Neither is a diagnosis."
             )
@@ -260,6 +296,12 @@ def get_session_report(
                 if hpath:
                     heatmap_data_url = _image_data_url(hpath)
 
+            facial_shape_diagram_data_url = None
+            if img.facial_shape_diagram_url:
+                fpath = shap_diagram_path(img.facial_shape_diagram_url)
+                if fpath:
+                    facial_shape_diagram_data_url = _image_data_url(fpath)
+
             shap_diagram_data_url = None
             if img.shap_diagram_url:
                 dpath = shap_diagram_path(img.shap_diagram_url)
@@ -272,6 +314,12 @@ def get_session_report(
             except HTTPException:
                 pass  # original file missing/moved -- still show what we have
 
+            pixel_region_explanation = (
+                [ExplanationItem(**region) for region in json.loads(img.pixel_shap_regions_json)]
+                if img.pixel_shap_regions_json
+                else []
+            )
+
             if img.risk_score is not None:
                 pct = img.risk_score * 100
                 features.append(
@@ -281,7 +329,9 @@ def get_session_report(
                         contributed_to_risk=img.risk_score >= 0.5,
                         image_data_url=image_data_url,
                         heatmap_data_url=heatmap_data_url,
+                        facial_shape_diagram_data_url=facial_shape_diagram_data_url,
                         shap_diagram_data_url=shap_diagram_data_url,
+                        pixel_region_explanation=pixel_region_explanation,
                     )
                 )
             else:
@@ -298,12 +348,26 @@ def get_session_report(
                             label=f"{prefix}{region['label']}",
                             direction=region["direction"],
                             magnitude=region["magnitude"],
+                            detail=region.get("detail"),
                         )
                     )
 
-        # Ranked across all images together, top 6 overall (matches the
-        # questionnaire's explanation length).
-        explanation = sorted(explanation, key=lambda item: -item.magnitude)[:6]
+            if img.other_shap_regions_json:
+                prefix = f"Image {i}: " if len(images) > 1 else ""
+                for region in json.loads(img.other_shap_regions_json):
+                    other_factors.append(
+                        ExplanationItem(
+                            label=f"{prefix}{region['label']} ({region['group']})",
+                            direction=region["direction"],
+                            magnitude=region["magnitude"],
+                            detail=region.get("detail"),
+                        )
+                    )
+
+        # Ranked across all images together -- all 11 facial-shape
+        # measurements per image, not truncated to a handful.
+        explanation = sorted(explanation, key=lambda item: -item.magnitude)
+        other_factors = sorted(other_factors, key=lambda item: -item.magnitude)[:4]
 
         summary_stats = [SummaryStat(label="Images analyzed", value=str(len(images)))]
         if scored:
@@ -314,26 +378,27 @@ def get_session_report(
                 SummaryStat(label="Average predicted probability", value=describe_probability(avg)),
                 SummaryStat(
                     label="Highest-confidence image",
-                    value=f"Image {top_idx} -- {short_label(top.risk_score)}",
+                    value=f"Image {top_idx} ({short_label(top.risk_score)})",
                 ),
                 SummaryStat(label="Likelihood bands", value=BAND_LEGEND),
             ]
         note = (
             "Risk score is the model's average predicted likelihood across all submitted images, "
             "shown per-image above. The heat map on each image is Grad-CAM (pools gradients over "
-            "the model's last convolutional layer) -- a visual attention map, not a clinical "
+            "the model's last convolutional layer), a visual attention map, not a clinical "
             "facial-feature finding. A checkmark next to an image below means that image's own "
             "predicted likelihood was 50% or higher; this is only which images individually leaned "
             "positive, not the overall likelihood band shown above (which uses the average)."
         )
         if any_shap:
             explanation_note = (
-                "SHAP (shap.GradientExplainer) values, pooled into a 3x3 grid of image regions "
-                "and ranked by how much each region pushed the prediction up or down -- also "
-                "shown drawn directly on the enlarged photo below, with each region's push "
-                "labeled in place. A second, independently-computed explanation alongside the "
-                "Grad-CAM heat map above -- agreement between methods is a stronger signal than "
-                "any one alone, but none of them is a diagnostic measurement."
+                "All 11 facial-shape measurements, ranked by SHAP from a second model. This is a "
+                "separate estimate, not the risk score above (the CNN's alone). IOD = "
+                "inter-ocular distance (eye-to-eye spacing), the unit most measurements below are "
+                "given in. The same model also weighs non-facial aspects of the photo; the "
+                "strongest of those are listed separately below as \"Other factors.\" Caveat: this "
+                "dataset's autistic/non-autistic photos came from different sources, so treat any "
+                "feature here as a correlation, not a clinical finding."
             )
         else:
             explanation_note = (
@@ -354,11 +419,13 @@ def get_session_report(
         patient_dob=patient.dob.date().isoformat() if patient and patient.dob else None,
         patient_age_label=_age_label(patient.dob) if patient else None,
         patient_external_id=patient.external_patient_id if patient else None,
-        hospital_name=hospital.name if hospital else "—",
+        hospital_name=hospital.name if hospital else "N/A",
         doctor_email=doctor.email if doctor else None,
         session_type=session.session_type,
         risk_score=session.risk_score,
         risk_category=session.risk_category,
+        result_label=result_label,
+        result_tone=result_tone,
         model_version=session.model_version,
         model_description=_model_description(session.model_version),
         created_at=utc_iso(session.created_at),
@@ -367,6 +434,7 @@ def get_session_report(
         features=features,
         explanation=explanation,
         explanation_note=explanation_note,
+        other_factors=other_factors,
         note=note,
     )
 

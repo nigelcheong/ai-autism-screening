@@ -17,6 +17,15 @@ plain-pickled torchvision nn.Module; see experiments/why_not_faces/cnn.py in
 the model-training repo's facial-stream branch for the training code).
 USE_ML_STUB_QUESTIONNAIRE / USE_ML_STUB_IMAGE can force the deterministic
 rule-based stub for either path independently.
+
+Image explanation (SHAP) is a *second*, independent model from the CNN
+above: ~30 named, human-readable features (acquisition, colour, face-box
+framing, facial morphology, pose -- see app/ml/named_features.py) feeding a
+HistGradientBoostingClassifier, explained with real shap.TreeExplainer
+values. It never changes risk_score/risk_category (still the CNN's alone);
+it only replaces the old pixel-grid-region SHAP approximation with real
+named features once Nigel's feature-extraction code and a reproducible
+training recipe became available.
 """
 
 import uuid
@@ -26,15 +35,6 @@ from app.config import settings
 from app.core.instruments import category_for_raw_score
 from app.core.risk_bands import categorize as _categorize
 from app.core.uploads import heatmap_dir, resolve_image_path
-
-# SHAP settings: a tradeoff of fidelity vs. request latency on CPU. At
-# nsamples=20 with a 4-image background, one explanation takes ~15-25s --
-# tested and chosen deliberately. Pooled into a grid of regions and ranked
-# (see _compute_shap_regions) rather than shown as a per-pixel heat map,
-# since the per-pixel signal is noisy at this sample count and a ranked
-# chart is what was actually asked for.
-SHAP_NSAMPLES = 20
-SHAP_BACKGROUND_SIZE = 4
 
 MODEL_VERSION_STUB = "stub-0.2"
 
@@ -254,83 +254,74 @@ def _save_heatmap(cam) -> str:
     return _save_colormap_image(heat, heatmap_dir())
 
 
-_shap_background = None
+# --- Pixel-region SHAP: a second, cruder explanation of the same CNN's own
+# pixels (as opposed to named_features.py's independent named-feature
+# model). Kept alongside the named-feature SHAP, not instead of it, since
+# agreement/disagreement between a pixel-based and a named-feature-based
+# explanation is itself informative. nsamples=20 with a 4-image background
+# is a deliberately tuned tradeoff: ~15-25s per explanation on CPU.
+PIXEL_SHAP_NSAMPLES = 20
+PIXEL_SHAP_BACKGROUND_SIZE = 4
+PIXEL_SHAP_GRID = 3  # 3x3 regions
+
+_pixel_shap_background = None
+
+_PIXEL_REGION_ROW_NAMES = ["Top", "Middle", "Bottom"]
+_PIXEL_REGION_COL_NAMES = ["left", "center", "right"]
 
 
-def _load_shap_background():
-    """A handful of real previously-uploaded images, preprocessed the same
-    way as inference input. SHAP needs a representative baseline of "typical"
-    inputs to measure each pixel's marginal contribution against -- these
-    don't need to exclude the image being explained, any same-distribution
-    sample works, and real uploads are exactly that (no external dataset
-    needed). Built once per process and reused across requests."""
-    global _shap_background
-    if _shap_background is not None:
-        return _shap_background
-
-    import torch
-
-    from app.core.uploads import upload_root
-
-    candidates = sorted(p for p in upload_root().glob("*") if p.is_file())[:SHAP_BACKGROUND_SIZE]
-    if not candidates:
-        raise RuntimeError("no uploaded images available yet to build a SHAP background set")
-    _shap_background = torch.cat([_preprocess_image(p) for p in candidates], dim=0)
-    return _shap_background
-
-
-SHAP_GRID = 3  # 3x3 regions
-
-_REGION_ROW_NAMES = ["Top", "Middle", "Bottom"]
-_REGION_COL_NAMES = ["left", "center", "right"]
-
-
-def _region_label(row: int, col: int) -> str:
+def _pixel_region_label(row: int, col: int) -> str:
     if row == 1 and col == 1:
         return "Center region"
-    return f"{_REGION_ROW_NAMES[row]}-{_REGION_COL_NAMES[col]} region"
+    return f"{_PIXEL_REGION_ROW_NAMES[row]}-{_PIXEL_REGION_COL_NAMES[col]} region"
 
 
-def _compute_shap_grid(model, tensor) -> list[list[float]]:
-    """SHAP (shap.GradientExplainer), pooled into a SHAP_GRID x SHAP_GRID
-    grid of regions, row-major, signed (not abs'd) so a region can genuinely
-    read as "pushed toward" or "pushed away from" the prediction. The single
-    source of truth both the ranked-list chart and the on-image diagram are
-    built from, so SHAP only ever runs once per image."""
+def _load_pixel_shap_background():
+    """A handful of real previously-uploaded images, preprocessed the same
+    way as inference input, used as the SHAP background distribution. Built
+    once per process and reused across requests."""
+    global _pixel_shap_background
+    if _pixel_shap_background is not None:
+        return _pixel_shap_background
+    import torch
+    from app.core.uploads import upload_root
+
+    candidates = sorted(p for p in upload_root().glob("*") if p.is_file())[:PIXEL_SHAP_BACKGROUND_SIZE]
+    if not candidates:
+        raise RuntimeError("no uploaded images available yet to build a SHAP background set")
+    _pixel_shap_background = torch.cat([_preprocess_image(p) for p in candidates], dim=0)
+    return _pixel_shap_background
+
+
+def _compute_pixel_shap_grid(model, tensor) -> list[list[float]]:
+    """SHAP (shap.GradientExplainer) on the CNN's own pixels, pooled into a
+    PIXEL_SHAP_GRID x PIXEL_SHAP_GRID grid of regions, row-major, signed (not
+    abs'd) -- the single source of truth both the ranked list and the
+    on-image diagram are built from, so SHAP only ever runs once per image.
+    """
     import numpy as np
     import shap
 
-    background = _load_shap_background()
+    background = _load_pixel_shap_background()
     explainer = shap.GradientExplainer(model, background)
-    shap_values = explainer.shap_values(tensor, nsamples=SHAP_NSAMPLES)
-
-    sv = shap_values[0, :, :, :, 0]  # (3, H, W) -- this model has one output
+    shap_values = explainer.shap_values(tensor, nsamples=PIXEL_SHAP_NSAMPLES)
+    sv = shap_values[0, :, :, :, 0]  # (3, H, W)
     signed = sv.sum(axis=0)  # pool channels, keep sign -> (H, W)
-
     h, w = signed.shape
-    row_edges = np.linspace(0, h, SHAP_GRID + 1).astype(int)
-    col_edges = np.linspace(0, w, SHAP_GRID + 1).astype(int)
-
+    row_edges = np.linspace(0, h, PIXEL_SHAP_GRID + 1).astype(int)
+    col_edges = np.linspace(0, w, PIXEL_SHAP_GRID + 1).astype(int)
     return [
         [
-            float(
-                signed[row_edges[r] : row_edges[r + 1], col_edges[c] : col_edges[c + 1]].sum()
-            )
-            for c in range(SHAP_GRID)
+            float(signed[row_edges[r] : row_edges[r + 1], col_edges[c] : col_edges[c + 1]].sum())
+            for c in range(PIXEL_SHAP_GRID)
         ]
-        for r in range(SHAP_GRID)
+        for r in range(PIXEL_SHAP_GRID)
     ]
 
 
-def _grid_to_ranked_list(grid: list[list[float]]) -> list[dict]:
-    """Chart data: bars + direction + magnitude, the same shape as the
-    questionnaire's per-answer explanation."""
+def _pixel_grid_to_ranked_list(grid: list[list[float]]) -> list[dict]:
     max_abs = max((abs(v) for row in grid for v in row), default=0) or 1.0
-    items = [
-        (_region_label(r, c), grid[r][c])
-        for r in range(SHAP_GRID)
-        for c in range(SHAP_GRID)
-    ]
+    items = [(_pixel_region_label(r, c), grid[r][c]) for r in range(PIXEL_SHAP_GRID) for c in range(PIXEL_SHAP_GRID)]
     ranked = sorted(items, key=lambda item: -abs(item[1]))
     return [
         {
@@ -342,8 +333,8 @@ def _grid_to_ranked_list(grid: list[list[float]]) -> list[dict]:
     ]
 
 
-SHAP_DIAGRAM_SIZE = 450
-SHAP_DIAGRAM_MARGIN = 160
+PIXEL_SHAP_DIAGRAM_SIZE = 450
+PIXEL_SHAP_DIAGRAM_MARGIN = 160
 
 
 def _find_font(size: int):
@@ -357,77 +348,64 @@ def _find_font(size: int):
     return ImageFont.load_default()
 
 
-def _render_shap_diagram(base_image, grid: list[list[float]]):
+def _render_pixel_shap_diagram(base_image, grid: list[list[float]]):
     """Draw the SHAP region grid directly on an enlarged copy of the photo:
-    each cell tinted red (pushed toward the prediction) or blue (pushed
-    away) by magnitude, a 3x3 grid overlay, and an arrow callout per region
-    labeling its percentage -- the same numbers as the ranked-list chart,
-    shown spatially on the image instead of (as well as) in a chart.
-    """
+    color-tinted cells plus an arrow + percentage label for each region.
+    Drawn onto a separate transparent overlay layer first, then
+    alpha-composited -- ImageDraw overwrites rather than blends when drawn
+    directly onto an opaque image."""
     import math
 
     from PIL import Image, ImageDraw
 
-    size = SHAP_DIAGRAM_SIZE
-    margin = SHAP_DIAGRAM_MARGIN
+    size = PIXEL_SHAP_DIAGRAM_SIZE
+    margin = PIXEL_SHAP_DIAGRAM_MARGIN
     canvas_size = size + margin * 2
-
     canvas = Image.new("RGBA", (canvas_size, canvas_size), (255, 255, 255, 255))
     canvas.paste(base_image.resize((size, size), Image.BILINEAR), (margin, margin))
 
-    # PIL's ImageDraw overwrites pixels rather than alpha-blending when
-    # drawn directly onto an opaque image, so the translucent region tints
-    # are drawn on a separate transparent layer and composited in.
     overlay = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
     odraw = ImageDraw.Draw(overlay)
-
-    cell = size / SHAP_GRID
+    cell = size / PIXEL_SHAP_GRID
     max_abs = max((abs(v) for row in grid for v in row), default=0) or 1.0
-
-    for r in range(SHAP_GRID):
-        for c in range(SHAP_GRID):
+    for r in range(PIXEL_SHAP_GRID):
+        for c in range(PIXEL_SHAP_GRID):
             value = grid[r][c]
             pct = abs(value) / max_abs * 100
             color = (220, 38, 38) if value > 0 else (37, 99, 235)
             x0, y0 = margin + c * cell, margin + r * cell
             alpha = int(35 + 90 * (pct / 100))
             odraw.rectangle([x0, y0, x0 + cell, y0 + cell], fill=color + (alpha,))
-
     canvas = Image.alpha_composite(canvas, overlay)
+
     draw = ImageDraw.Draw(canvas, "RGBA")
     font = _find_font(24)
     font_small = _find_font(18)
-
-    for i in range(1, SHAP_GRID):
+    for i in range(1, PIXEL_SHAP_GRID):
         draw.line([(margin + i * cell, margin), (margin + i * cell, margin + size)], fill=(255, 255, 255, 230), width=3)
         draw.line([(margin, margin + i * cell), (margin + size, margin + i * cell)], fill=(255, 255, 255, 230), width=3)
     draw.rectangle([margin, margin, margin + size, margin + size], outline=(50, 50, 50, 255), width=3)
 
-    mid = SHAP_GRID // 2
-    for r in range(SHAP_GRID):
-        for c in range(SHAP_GRID):
+    mid = PIXEL_SHAP_GRID // 2
+    for r in range(PIXEL_SHAP_GRID):
+        for c in range(PIXEL_SHAP_GRID):
             value = grid[r][c]
             pct = abs(value) / max_abs * 100
             color = (220, 38, 38) if value > 0 else (37, 99, 235)
             arrow = "\u25B2" if value > 0 else "\u25BC"
             label = f"{arrow} {pct:.0f}%"
-
             x0, y0 = margin + c * cell, margin + r * cell
             cx, cy = x0 + cell / 2, y0 + cell / 2
-
             if r == mid and c == mid:
-                # Center cell: no room for an external arrow, label it directly.
                 bbox = draw.textbbox((0, 0), label, font=font)
                 tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
                 box = [cx - tw / 2 - 10, cy - th / 2 - 8, cx + tw / 2 + 10, cy + th / 2 + 8]
                 draw.rectangle(box, fill=(255, 255, 255, 235))
                 draw.text((cx - tw / 2, cy - th / 2), label, fill=color, font=font)
                 continue
-
             dx, dy = c - mid, r - mid
             ax = min(max(margin + size / 2 + dx * (size / 2 + margin * 0.6), 14), canvas_size - 14)
             ay = min(max(margin + size / 2 + dy * (size / 2 + margin * 0.6), 14), canvas_size - 14)
-
             draw.line([(ax, ay), (cx, cy)], fill=color + (255,), width=3)
             angle = math.atan2(cy - ay, cx - ax)
             ah = 14
@@ -439,43 +417,54 @@ def _render_shap_diagram(base_image, grid: list[list[float]]):
                 ],
                 fill=color + (255,),
             )
-
             bbox = draw.textbbox((0, 0), label, font=font_small)
             tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
             tx = min(max(ax - tw / 2, 4), canvas_size - tw - 4)
             ty = min(max(ay - th / 2, 4), canvas_size - th - 4)
             draw.rectangle([tx - 5, ty - 3, tx + tw + 5, ty + th + 3], fill=(255, 255, 255, 235))
             draw.text((tx, ty), label, fill=color, font=font_small)
-
     return canvas.convert("RGB")
 
 
-def _safe_shap(model, tensor, base_image) -> tuple[list[dict], str | None]:
+def _safe_pixel_shap(model, tensor, base_image) -> tuple[list[dict], str | None]:
     import logging
 
     try:
-        grid = _compute_shap_grid(model, tensor)
+        grid = _compute_pixel_shap_grid(model, tensor)
     except Exception:
-        # SHAP is a secondary, best-effort explanation -- never fail the
-        # whole screening because of it, but always log why so this is
-        # debuggable instead of silently disappearing.
-        logging.getLogger(__name__).exception("SHAP explanation failed")
+        logging.getLogger(__name__).exception("pixel-region SHAP explanation failed")
         return [], None
 
-    ranked = _grid_to_ranked_list(grid)
+    ranked = _pixel_grid_to_ranked_list(grid)
 
     diagram_name = None
     try:
         from app.core.uploads import shap_diagram_dir
 
-        diagram = _render_shap_diagram(base_image, grid)
+        diagram = _render_pixel_shap_diagram(base_image, grid)
         diagram_name = f"{uuid.uuid4().hex}.jpg"
         diagram.save(shap_diagram_dir() / diagram_name, format="JPEG", quality=88)
     except Exception:
-        logging.getLogger(__name__).exception("SHAP diagram rendering failed")
+        logging.getLogger(__name__).exception("pixel-region SHAP diagram rendering failed")
         diagram_name = None
 
     return ranked, diagram_name
+
+
+def _safe_named_feature_shap(path) -> tuple[list[dict], list[dict], str | None]:
+    import logging
+
+    try:
+        from app.core.uploads import shap_diagram_dir
+        from app.ml.named_features import compute_named_feature_shap
+
+        return compute_named_feature_shap(path, diagram_dir=shap_diagram_dir())
+    except Exception:
+        # SHAP is a secondary, best-effort explanation -- never fail the
+        # whole screening because of it, but always log why so this is
+        # debuggable instead of silently disappearing.
+        logging.getLogger(__name__).exception('named-feature SHAP explanation failed')
+        return [], [], None
 
 
 def run_image_inference(image_urls: list[str]) -> dict:
@@ -488,6 +477,9 @@ def run_image_inference(image_urls: list[str]) -> dict:
             "per_image_scores": [score for _ in image_urls],
             "per_image_heatmaps": [None for _ in image_urls],
             "per_image_shap_regions": [[] for _ in image_urls],
+            "per_image_other_shap_regions": [[] for _ in image_urls],
+            "per_image_facial_shape_diagrams": [None for _ in image_urls],
+            "per_image_pixel_shap_regions": [[] for _ in image_urls],
             "per_image_shap_diagrams": [None for _ in image_urls],
         }
 
@@ -499,6 +491,9 @@ def run_image_inference(image_urls: list[str]) -> dict:
     probs = []
     heatmaps = []
     shap_regions = []
+    other_shap_regions = []
+    facial_shape_diagrams = []
+    pixel_shap_regions = []
     shap_diagrams = []
     for url in image_urls:
         path = resolve_image_path(url)
@@ -517,8 +512,13 @@ def run_image_inference(image_urls: list[str]) -> dict:
         cam = cam_fn(tensor, target_sign=target_sign)
         heatmaps.append(_save_heatmap(cam))
 
-        ranked, diagram_name = _safe_shap(model, tensor, _load_resized_rgb(path))
+        ranked, other_ranked, facial_shape_diagram = _safe_named_feature_shap(path)
         shap_regions.append(ranked)
+        other_shap_regions.append(other_ranked)
+        facial_shape_diagrams.append(facial_shape_diagram)
+
+        pixel_ranked, diagram_name = _safe_pixel_shap(model, tensor, _load_resized_rgb(path))
+        pixel_shap_regions.append(pixel_ranked)
         shap_diagrams.append(diagram_name)
 
     # Images are independent evidence about the same patient; average their
@@ -532,5 +532,8 @@ def run_image_inference(image_urls: list[str]) -> dict:
         "per_image_scores": probs,
         "per_image_heatmaps": heatmaps,
         "per_image_shap_regions": shap_regions,
+        "per_image_other_shap_regions": other_shap_regions,
+        "per_image_facial_shape_diagrams": facial_shape_diagrams,
+        "per_image_pixel_shap_regions": pixel_shap_regions,
         "per_image_shap_diagrams": shap_diagrams,
     }

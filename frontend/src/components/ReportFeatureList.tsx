@@ -1,4 +1,11 @@
 import { Check, X } from "lucide-react";
+import { ExplanationList } from "./ExplanationList";
+
+interface PixelRegionItem {
+  label: string;
+  direction: "increased" | "decreased";
+  magnitude: number;
+}
 
 interface Feature {
   label: string;
@@ -6,7 +13,9 @@ interface Feature {
   contributed_to_risk: boolean;
   image_data_url?: string | null;
   heatmap_data_url?: string | null;
+  facial_shape_diagram_data_url?: string | null;
   shap_diagram_data_url?: string | null;
+  pixel_region_explanation?: PixelRegionItem[];
 }
 
 export function ReportFeatureList({ features, note }: { features: Feature[]; note?: string }) {
@@ -46,16 +55,35 @@ export function ReportFeatureList({ features, note }: { features: Feature[]; not
                 <p className="text-xs text-ink-500">{f.value}</p>
               </div>
             </div>
-            {f.shap_diagram_data_url && (
+            {f.facial_shape_diagram_data_url && (
               <div className="mt-3 ml-7">
                 <p className="text-xs text-ink-400 mb-1.5">
-                  SHAP contribution by region ({f.label})
+                  Facial-shape SHAP (landmark measurements, {f.label})
                 </p>
                 <img
-                  src={f.shap_diagram_data_url}
-                  alt={`${f.label} SHAP region diagram`}
+                  src={f.facial_shape_diagram_data_url}
+                  alt={`${f.label} facial-shape SHAP diagram`}
                   className="w-full max-w-sm rounded-lg border border-ink-200"
                 />
+              </div>
+            )}
+            {(f.shap_diagram_data_url || (f.pixel_region_explanation && f.pixel_region_explanation.length > 0)) && (
+              <div className="mt-3 ml-7">
+                <p className="text-xs text-ink-400 mb-1.5">
+                  Pixel-region SHAP (CNN's own pixels, {f.label})
+                </p>
+                <div className="grid sm:grid-cols-[minmax(0,260px)_1fr] gap-4 items-start">
+                  {f.shap_diagram_data_url && (
+                    <img
+                      src={f.shap_diagram_data_url}
+                      alt={`${f.label} pixel-region SHAP diagram`}
+                      className="w-full max-w-sm rounded-lg border border-ink-200"
+                    />
+                  )}
+                  {f.pixel_region_explanation && f.pixel_region_explanation.length > 0 && (
+                    <ExplanationList items={f.pixel_region_explanation} />
+                  )}
+                </div>
               </div>
             )}
           </li>

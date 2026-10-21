@@ -2,6 +2,7 @@ interface ExplanationItem {
   label: string;
   direction: "increased" | "decreased";
   magnitude: number;
+  detail?: string | null;
 }
 
 export function ExplanationList({
@@ -20,7 +21,10 @@ export function ExplanationList({
       <ul className="space-y-3">
         {items.map((item, i) => (
           <li key={i}>
-            <p className="text-sm text-ink-900 mb-1">{item.label}</p>
+            <div className="flex items-baseline justify-between gap-2 mb-1">
+              <p className="text-sm text-ink-900">{item.label}</p>
+              {item.detail && <p className="text-xs text-ink-400 shrink-0">{item.detail}</p>}
+            </div>
             <div className="flex items-center gap-2">
               <div className="flex-1 h-2 bg-ink-100 rounded-full overflow-hidden">
                 <div

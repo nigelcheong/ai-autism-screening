@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Eye, KeyRound, X } from "lucide-react";
+import { Plus, Trash2, Eye, Pencil, X } from "lucide-react";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { SearchInput } from "../../components/ui/SearchInput";
@@ -38,9 +38,10 @@ export function HospitalUsersPanel({ hospitalId }: { hospitalId: string }) {
   const [role, setRole] = useState("staff");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resettingId, setResettingId] = useState<string | null>(null);
-  const [resetPassword, setResetPassword] = useState("");
-  const [resetError, setResetError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
 
   function load(offset: number, append: boolean) {
     api.listHospitalUsers(hospitalId, { limit: PAGE_SIZE, offset }).then((data) => {
@@ -102,22 +103,27 @@ export function HospitalUsersPanel({ hospitalId }: { hospitalId: string }) {
     navigate("/dashboard");
   }
 
-  function startReset(userId: string) {
-    setResettingId(userId);
-    setResetPassword("");
-    setResetError(null);
+  function startEdit(user: HospitalUser) {
+    setEditingId(user.id);
+    setEditEmail(user.email);
+    setEditPassword("");
+    setEditError(null);
   }
 
-  async function submitReset(userId: string) {
-    if (resetPassword.length < 8) {
-      setResetError("Password must be at least 8 characters.");
+  async function submitEdit(userId: string) {
+    if (editPassword && editPassword.length < 8) {
+      setEditError("Password must be at least 8 characters.");
       return;
     }
     try {
-      await api.updateHospitalUser(hospitalId, userId, { password: resetPassword });
-      setResettingId(null);
+      await api.updateHospitalUser(hospitalId, userId, {
+        email: editEmail.trim(),
+        ...(editPassword ? { password: editPassword } : {}),
+      });
+      setEditingId(null);
+      refresh();
     } catch (err) {
-      setResetError((err as Error).message);
+      setEditError((err as Error).message);
     }
   }
 
@@ -207,11 +213,11 @@ export function HospitalUsersPanel({ hospitalId }: { hospitalId: string }) {
                   <td className="py-2.5">
                     <div className="flex items-center justify-end gap-3">
                       <button
-                        title="Reset password"
-                        onClick={() => (resettingId === u.id ? setResettingId(null) : startReset(u.id))}
+                        title="Edit email / password"
+                        onClick={() => (editingId === u.id ? setEditingId(null) : startEdit(u))}
                         className="text-ink-400 hover:text-brand-600"
                       >
-                        <KeyRound size={16} />
+                        <Pencil size={16} />
                       </button>
                       <button
                         title="Impersonate"
@@ -230,25 +236,32 @@ export function HospitalUsersPanel({ hospitalId }: { hospitalId: string }) {
                     </div>
                   </td>
                 </tr>
-                {resettingId === u.id && (
+                {editingId === u.id && (
                   <tr className="border-b border-ink-100 bg-ink-50">
                     <td colSpan={3} className="py-3 px-2">
                       <p className="text-xs text-ink-400 mb-1.5">
-                        Passwords are encrypted and can never be viewed — set a new one below
-                        (click the eye icon to check what you typed before saving).
+                        Passwords are encrypted and can never be viewed — leave blank to keep the
+                        current one.
                       </p>
                       <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="email"
+                          className={inputClass}
+                          placeholder="Email"
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                        />
                         <PasswordInput
                           autoComplete="new-password"
-                          placeholder="New password (min. 8 characters)"
-                          value={resetPassword}
-                          onChange={(e) => setResetPassword(e.target.value)}
+                          placeholder="New password (min. 8 characters, optional)"
+                          value={editPassword}
+                          onChange={(e) => setEditPassword(e.target.value)}
                         />
-                        <Button size="sm" onClick={() => submitReset(u.id)}>
-                          Set
+                        <Button size="sm" onClick={() => submitEdit(u.id)}>
+                          Save
                         </Button>
                       </div>
-                      {resetError && <p className="text-red-600 text-xs mt-1">{resetError}</p>}
+                      {editError && <p className="text-red-600 text-xs mt-1">{editError}</p>}
                     </td>
                   </tr>
                 )}

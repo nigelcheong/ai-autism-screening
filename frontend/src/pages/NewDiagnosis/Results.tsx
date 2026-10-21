@@ -45,13 +45,27 @@ export default function Results() {
     <AppShell title="Screening Result">
       <div className="max-w-6xl mx-auto grid lg:grid-cols-[minmax(0,320px)_1fr] gap-6 items-start">
         <Card className="p-8 text-center">
-          <Badge tone={result.risk_category}>{result.risk_category} likelihood</Badge>
-          <p className="mt-4 text-4xl font-bold text-ink-900">
-            {(result.risk_score * 100).toFixed(0)}%
-          </p>
+          {report?.result_label ? (
+            <>
+              <Badge tone={(report.result_tone as any) ?? "neutral"}>{report.result_label}</Badge>
+            </>
+          ) : (
+            <>
+              <Badge tone={result.risk_category}>{result.risk_category} likelihood</Badge>
+              <p className="mt-4 text-4xl font-bold text-ink-900">
+                {(result.risk_score * 100).toFixed(0)}%
+              </p>
+            </>
+          )}
           <p className="text-sm text-ink-400 mt-1">
             {result.session_type} · model {result.model_version}
           </p>
+          {(report?.result_tone ?? result.risk_category) === "high" && (
+            <p className="text-sm text-risk-high mt-3">
+              Clinical referral recommended. Please consult a qualified clinician for a formal
+              evaluation.
+            </p>
+          )}
 
           <div className="flex flex-col gap-2 mt-8">
             <Button disabled={!report} onClick={() => report && downloadReportPdf(report)}>
@@ -82,7 +96,7 @@ export default function Results() {
                 {report.summary_stats.map((stat) => (
                   <div key={stat.label} className="bg-ink-50 rounded-lg px-3 py-2">
                     <dt className="text-xs text-ink-400">{stat.label}</dt>
-                    <dd className="text-sm font-semibold text-ink-900">{stat.value}</dd>
+                    <dd className="text-sm font-semibold text-ink-900 whitespace-pre-line">{stat.value}</dd>
                   </div>
                 ))}
               </dl>
@@ -93,6 +107,16 @@ export default function Results() {
             <Card className="p-6">
               <p className="font-medium text-ink-900 mb-4">What influenced this result</p>
               <ExplanationList items={report.explanation} note={report.explanation_note} />
+            </Card>
+          )}
+
+          {report && report.other_factors.length > 0 && (
+            <Card className="p-6">
+              <p className="font-medium text-ink-900 mb-4">Other factors</p>
+              <ExplanationList
+                items={report.other_factors}
+                note="Non-facial aspects of the photo (image quality, colour, framing, pose) the same model also weighed, shown separately so they're never mistaken for a facial trait."
+              />
             </Card>
           )}
 

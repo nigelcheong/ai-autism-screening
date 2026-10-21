@@ -11,7 +11,7 @@ bcrypt==4.0.1
 python-multipart==0.0.9
 slowapi==0.1.9
 supabase==2.7.4
-scikit-learn==1.9.0
+scikit-learn==1.9.1
 joblib==1.6.0
 pandas==3.0.6
 Pillow==12.3.0
@@ -20,3 +20,12 @@ torch==2.14.1
 torchvision==0.29.1
 shap==0.53.0
 scipy==1.18.1
+
+# Named-feature facial SHAP explanation (app/ml/named_features.py): face
+# box detection (MTCNN) + landmark detection (MediaPipe), reproducing
+# github.com/nigelcheong/ai-autism-screening's why_not_faces feature set.
+facenet-pytorch==2.6.0
+mediapipe==1.1.1
+opencv-python-headless==5.0.0.93
+matplotlib==3.11.2
+requests==2.34.2

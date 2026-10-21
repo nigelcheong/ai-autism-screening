@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_staff, TenantContext
+from app.auth.dependencies import get_current_staff, require_role, TenantContext
 from app.core.diagnosis import run_questionnaire_diagnosis, run_image_diagnosis, to_diagnosis_result
 from app.core.uploads import save_uploaded_image
 from app.models.db import get_db
@@ -23,7 +23,7 @@ async def upload_images(
 def diagnose_questionnaire(
     submission: QuestionnaireSubmission,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_current_staff),
+    ctx: TenantContext = Depends(require_role("staff", "hospital_admin", "doctor")),
 ):
     session = run_questionnaire_diagnosis(db, ctx.hospital_id, submission)
     return to_diagnosis_result(session)
@@ -33,7 +33,7 @@ def diagnose_questionnaire(
 def diagnose_image(
     submission: ImageSubmission,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_current_staff),
+    ctx: TenantContext = Depends(require_role("staff", "hospital_admin", "doctor")),
 ):
     session = run_image_diagnosis(db, ctx.hospital_id, submission)
     return to_diagnosis_result(session)

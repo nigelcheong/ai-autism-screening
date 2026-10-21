@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_staff, TenantContext
+from app.auth.dependencies import get_current_staff, require_role, TenantContext
 from app.core.time import utc_iso
 from app.models.db import get_db
 from app.models.entities import Patient, DiagnosticSession
@@ -17,6 +17,7 @@ class PatientIn(BaseModel):
     name: str
     dob: datetime | None = None
     external_patient_id: str | None = None
+    contact_number: str | None = None
     gender: str | None = None
     autism: bool | None = None
     jaundice: bool | None = None
@@ -100,6 +101,7 @@ def list_patients(
                 name=p.name,
                 dob=p.dob,
                 external_patient_id=p.external_patient_id,
+                contact_number=p.contact_number,
                 gender=p.gender,
                 autism=p.autism,
                 jaundice=p.jaundice,
@@ -118,7 +120,7 @@ def list_patients(
 def create_patient(
     payload: PatientIn,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_current_staff),
+    ctx: TenantContext = Depends(require_role("staff", "hospital_admin", "doctor")),
 ):
     patient = Patient(hospital_id=ctx.hospital_id, created_by=ctx.subject, **payload.dict())
     db.add(patient)
@@ -131,6 +133,7 @@ class PatientPatch(BaseModel):
     name: str | None = None
     dob: datetime | None = None
     external_patient_id: str | None = None
+    contact_number: str | None = None
     gender: str | None = None
     autism: bool | None = None
     jaundice: bool | None = None
@@ -144,7 +147,7 @@ def update_patient(
     patient_id: str,
     payload: PatientPatch,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_current_staff),
+    ctx: TenantContext = Depends(require_role("staff", "hospital_admin", "doctor")),
 ):
     patient = (
         db.query(Patient)
@@ -157,6 +160,7 @@ def update_patient(
         "name",
         "dob",
         "external_patient_id",
+        "contact_number",
         "gender",
         "autism",
         "jaundice",
@@ -174,6 +178,7 @@ def update_patient(
         name=patient.name,
         dob=patient.dob,
         external_patient_id=patient.external_patient_id,
+        contact_number=patient.contact_number,
         gender=patient.gender,
         autism=patient.autism,
         jaundice=patient.jaundice,

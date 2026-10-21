@@ -258,8 +258,16 @@ def create_hospital_user(
 
 
 class HospitalUserPatch(BaseModel):
+    email: str | None = None
     role: str | None = None
     password: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, v: str | None) -> str | None:
+        if v is not None and not EMAIL_RE.match(v):
+            raise ValueError("not a valid email address")
+        return v
 
 
 def _get_hospital_user(db: Session, hospital_id: str, user_id: str) -> StaffUser:
@@ -282,6 +290,12 @@ def update_hospital_user(
     ctx: TenantContext = Depends(require_role("platform_admin")),
 ):
     user = _get_hospital_user(db, hospital_id, user_id)
+    if payload.email is not None and payload.email != user.email:
+        if db.query(StaffUser).filter(StaffUser.email == payload.email).first():
+            raise HTTPException(status.HTTP_409_CONFLICT, "a user with this email already exists")
+        old_email = user.email
+        user.email = payload.email
+        log_action(db, ctx, "change_user_email", target=f"{old_email} -> {payload.email}", hospital_id=hospital_id)
     if payload.role is not None:
         if payload.role not in ("hospital_admin", "doctor", "staff"):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid role")

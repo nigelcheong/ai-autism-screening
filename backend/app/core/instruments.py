@@ -108,3 +108,58 @@ def category_for_raw_score(raw_score: int) -> str:
     if raw_score >= 3:
         return "moderate"
     return "low"
+
+
+# Instrument-specific referral labels, shown on the report instead of a bare
+# percentage -- each instrument's own clinical cutoff score, worded for a
+# clinician deciding what to do next, not just "low/moderate/high". The
+# "moderate" tier is deliberately a single exact score for each instrument
+# (the point right at the standard referral cutoff), not a range.
+_REFERRAL_LABELS = {
+    "aq10": [
+        (5, "No Referral Indicated", "low"),
+        (6, "Specialist Review Recommended", "moderate"),
+        (10, "Urgent Specialist Evaluation Advised", "high"),
+    ],
+    "qchat10": [
+        (2, "No Referral Indicated", "low"),
+        (3, "Early Intervention Review Recommended", "moderate"),
+        (10, "Comprehensive Pediatric Evaluation Advised", "high"),
+    ],
+}
+
+
+def referral_label_for_raw_score(instrument: str, raw_score: int) -> tuple[str, str] | None:
+    """(label, tone) for this instrument's raw score, tone in {low,moderate,high}
+    for the report's colour coding. None for an unrecognised instrument."""
+    tiers = _REFERRAL_LABELS.get(instrument)
+    if tiers is None:
+        return None
+    for max_score, label, tone in tiers:
+        if raw_score <= max_score:
+            return label, tone
+    return tiers[-1][1], tiers[-1][2]
+
+
+def referral_band_legend(instrument: str) -> str | None:
+    """Three lines, one per tier, e.g.:
+        0-5: No Referral Indicated
+        6: Specialist Review Recommended
+        7-10: Urgent Specialist Evaluation Advised
+    Derived from the same tiers referral_label_for_raw_score uses, so the
+    two can never drift apart. None for an unrecognised instrument. Each
+    line can run to 30-40 characters, too long to keep on one line
+    alongside the other summary stats -- \\n-separated, like BAND_LEGEND,
+    for the same whitespace-pre-line (web) / splitTextToSize (PDF)
+    multi-line handling.
+    """
+    tiers = _REFERRAL_LABELS.get(instrument)
+    if tiers is None:
+        return None
+    parts = []
+    low = 0
+    for max_score, label, _tone in tiers:
+        range_text = str(low) if low == max_score else f"{low}-{max_score}"
+        parts.append(f"{range_text}: {label}")
+        low = max_score + 1
+    return "\n".join(parts)

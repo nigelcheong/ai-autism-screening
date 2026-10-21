@@ -35,6 +35,7 @@ const DOCTOR_ITEMS: NavItem[] = [
 ];
 
 const HOSPITAL_ADMIN_ITEMS: NavItem[] = [
+  { to: "/admin/team", label: "Team", icon: Users },
   { to: "/admin/api-access", label: "API Access", icon: KeyRound },
 ];
 

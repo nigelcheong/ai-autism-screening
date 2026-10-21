@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard/Dashboard";
 import PatientList from "./pages/Dashboard/PatientList";
 import PatientDetail from "./pages/Dashboard/PatientDetail";
 import ApiAccess from "./pages/Admin/ApiAccess";
+import Team from "./pages/Admin/Team";
 import Hospitals from "./pages/Admin/Hospitals";
 import HospitalDetail from "./pages/Admin/HospitalDetail";
 import QuestionBank from "./pages/Admin/QuestionBank";
@@ -16,6 +17,7 @@ import AuditLog from "./pages/Admin/AuditLog";
 import PlatformUsage from "./pages/Admin/PlatformUsage";
 import MyCases from "./pages/Doctor/MyCases";
 import ReportView from "./pages/Reports/ReportView";
+import CombinedReportView from "./pages/Reports/CombinedReportView";
 import ChangePassword from "./pages/Account/ChangePassword";
 import { DiagnosisFlowProvider } from "./pages/NewDiagnosis/DiagnosisFlowContext";
 import PatientSelect from "./pages/NewDiagnosis/PatientSelect";
@@ -102,6 +104,14 @@ export default function App() {
         }
       />
       <Route
+        path="/combined-reports/:reportId"
+        element={
+          <RequireAuth>
+            <CombinedReportView />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/account"
         element={
           <RequireAuth>
@@ -115,6 +125,14 @@ export default function App() {
         element={
           <RequireRole roles={["hospital_admin"]}>
             <ApiAccess />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="/admin/team"
+        element={
+          <RequireRole roles={["hospital_admin"]}>
+            <Team />
           </RequireRole>
         }
       />
@@ -162,7 +180,7 @@ export default function App() {
       <Route
         path="/diagnose/*"
         element={
-          <RequireAuth>
+          <RequireRole roles={["staff", "hospital_admin", "doctor"]}>
             <DiagnosisFlowProvider>
               <Routes>
                 <Route index element={<PatientSelect />} />
@@ -173,7 +191,7 @@ export default function App() {
                 <Route path="results" element={<Results />} />
               </Routes>
             </DiagnosisFlowProvider>
-          </RequireAuth>
+          </RequireRole>
         }
       />
       </Routes>

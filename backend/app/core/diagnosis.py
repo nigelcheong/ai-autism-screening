@@ -119,11 +119,19 @@ def run_image_diagnosis(
     per_image_scores = result.get("per_image_scores", [])
     per_image_heatmaps = result.get("per_image_heatmaps", [])
     per_image_shap_regions = result.get("per_image_shap_regions", [])
+    per_image_other_shap_regions = result.get("per_image_other_shap_regions", [])
+    per_image_facial_shape_diagrams = result.get("per_image_facial_shape_diagrams", [])
+    per_image_pixel_shap_regions = result.get("per_image_pixel_shap_regions", [])
     per_image_shap_diagrams = result.get("per_image_shap_diagrams", [])
     for i, url in enumerate(submission.image_urls):
         score = per_image_scores[i] if i < len(per_image_scores) else None
         heatmap = per_image_heatmaps[i] if i < len(per_image_heatmaps) else None
         regions = per_image_shap_regions[i] if i < len(per_image_shap_regions) else None
+        other_regions = per_image_other_shap_regions[i] if i < len(per_image_other_shap_regions) else None
+        facial_shape_diagram = (
+            per_image_facial_shape_diagrams[i] if i < len(per_image_facial_shape_diagrams) else None
+        )
+        pixel_regions = per_image_pixel_shap_regions[i] if i < len(per_image_pixel_shap_regions) else None
         diagram = per_image_shap_diagrams[i] if i < len(per_image_shap_diagrams) else None
         db.add(
             SessionImage(
@@ -132,6 +140,9 @@ def run_image_diagnosis(
                 risk_score=score,
                 heatmap_url=heatmap,
                 shap_regions_json=json.dumps(regions) if regions else None,
+                other_shap_regions_json=json.dumps(other_regions) if other_regions else None,
+                facial_shape_diagram_url=facial_shape_diagram,
+                pixel_shap_regions_json=json.dumps(pixel_regions) if pixel_regions else None,
                 shap_diagram_url=diagram,
             )
         )

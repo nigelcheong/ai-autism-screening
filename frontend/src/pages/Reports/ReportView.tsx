@@ -75,10 +75,10 @@ export default function ReportView() {
                       ? `${new Date(report.patient_dob).toLocaleDateString()}${
                           report.patient_age_label ? ` (${report.patient_age_label} old)` : ""
                         }`
-                      : "—"
+                      : "N/A"
                   }
                 />
-                <Field label="Patient ID" value={report.patient_external_id ?? "—"} />
+                <Field label="Patient ID" value={report.patient_external_id ?? "N/A"} />
                 <Field label="Reviewing clinician" value={report.doctor_email ?? "Unassigned"} />
                 <Field
                   label="Screening date"
@@ -90,17 +90,31 @@ export default function ReportView() {
                 />
               </div>
 
-              <div className="flex items-center justify-between flex-wrap gap-2 bg-ink-50 rounded-lg px-4 py-3">
-                <p className="text-sm font-medium text-ink-700">Screening result</p>
-                {report.risk_category && (
-                  <div className="text-right">
-                    <Badge tone={report.risk_category as any}>{report.risk_category} likelihood</Badge>
-                    {report.risk_score !== null && (
-                      <p className="text-2xl font-bold text-ink-900 mt-1">
-                        {(report.risk_score * 100).toFixed(0)}%
-                      </p>
-                    )}
-                  </div>
+              <div className="bg-ink-50 rounded-lg px-4 py-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-sm font-medium text-ink-700">Screening result</p>
+                  {report.result_label ? (
+                    <div className="text-right">
+                      <Badge tone={(report.result_tone as any) ?? "neutral"}>{report.result_label}</Badge>
+                    </div>
+                  ) : (
+                    report.risk_category && (
+                      <div className="text-right">
+                        <Badge tone={report.risk_category as any}>{report.risk_category} likelihood</Badge>
+                        {report.risk_score !== null && (
+                          <p className="text-2xl font-bold text-ink-900 mt-1">
+                            {(report.risk_score * 100).toFixed(0)}%
+                          </p>
+                        )}
+                      </div>
+                    )
+                  )}
+                </div>
+                {(report.result_tone ?? report.risk_category) === "high" && (
+                  <p className="text-sm text-risk-high mt-2">
+                    Clinical referral recommended. Please consult a qualified clinician for a
+                    formal evaluation.
+                  </p>
                 )}
               </div>
             </Card>
@@ -112,7 +126,7 @@ export default function ReportView() {
                   {report.summary_stats.map((stat) => (
                     <div key={stat.label} className="bg-ink-50 rounded-lg px-3 py-2">
                       <dt className="text-xs text-ink-400">{stat.label}</dt>
-                      <dd className="text-sm font-semibold text-ink-900">{stat.value}</dd>
+                      <dd className="text-sm font-semibold text-ink-900 whitespace-pre-line">{stat.value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -123,6 +137,16 @@ export default function ReportView() {
               <Card className="p-6 mb-6">
                 <p className="font-medium text-ink-900 mb-4">What influenced this result</p>
                 <ExplanationList items={report.explanation} note={report.explanation_note} />
+              </Card>
+            )}
+
+            {report.other_factors.length > 0 && (
+              <Card className="p-6 mb-6">
+                <p className="font-medium text-ink-900 mb-4">Other factors</p>
+                <ExplanationList
+                  items={report.other_factors}
+                  note="Non-facial aspects of the photo (image quality, colour, framing, pose) the same model also weighed, shown separately so they're never mistaken for a facial trait."
+                />
               </Card>
             )}
 
@@ -137,7 +161,7 @@ export default function ReportView() {
                 <div>
                   <p className="text-ink-700 font-medium">Scored by: {report.model_description}</p>
                   <p className="text-xs text-ink-400 mt-1">
-                    Model reference: {report.model_version ?? "—"} · Report generated{" "}
+                    Model reference: {report.model_version ?? "N/A"} · Report generated{" "}
                     {new Date(report.generated_at).toLocaleString()}
                   </p>
                   <p className="text-xs text-ink-400 mt-2">

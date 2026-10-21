@@ -65,6 +65,7 @@ class Patient(Base):
     external_patient_id = Column(String, nullable=True)
     name = Column(String, nullable=False)
     dob = Column(DateTime, nullable=True)
+    contact_number = Column(String, nullable=True)
     # Demographic/history fields asked on the first screening's Personal
     # Information step. Persisted here (like dob) so returning for another
     # screening doesn't ask the same questions again -- only what's still
@@ -148,22 +149,57 @@ class SessionImage(Base):
     # attention overlay -- which pixels most drove the model's prediction
     # for this specific photo. Null for stub-scored sessions.
     heatmap_url = Column(String, nullable=True)
-    # JSON-encoded list of {label, direction, magnitude} -- this image's
-    # SHAP values (shap.GradientExplainer), pooled into a 3x3 grid of
-    # regions and ranked, the same shape as the questionnaire's per-answer
-    # explanation. A chart, not a second heat map: Grad-CAM above is the
-    # visual explanation; this is the numeric one. Null for stub-scored
-    # sessions.
+    # JSON-encoded list of {label, direction, magnitude, detail} -- SHAP
+    # (shap.TreeExplainer) attribution from the named-feature model
+    # (app/ml/named_features.py), restricted to the 11 facial_shape
+    # (morphology) measurements -- the primary, named explanation. Null for
+    # stub-scored sessions or sessions predating this feature.
     shap_regions_json = Column(Text, nullable=True)
-    # Filename (under uploads/images/shap_diagrams/) of this image's SHAP
-    # grid diagram -- the same region values as shap_regions_json, drawn
-    # directly on an enlarged copy of the photo with a 3x3 grid overlay and
-    # arrow callouts, instead of (or alongside) the ranked-list chart.
-    # Null for stub-scored sessions.
+    # JSON-encoded list of {label, direction, magnitude, detail, group} --
+    # the top non-facial_shape features (acquisition/colour/framing/pose)
+    # from the same named-feature model, kept separate from
+    # shap_regions_json so a report can label them as what they are
+    # ("image quality", "photo colour", etc.) instead of mixing them into
+    # the facial-shape list above.
+    other_shap_regions_json = Column(Text, nullable=True)
+    # Filename (under uploads/images/shap_diagrams/) of the facial-shape
+    # SHAP diagram -- each facial_shape measurement's line (mouth width,
+    # nose width, palpebral fissures, etc.) drawn directly on the photo,
+    # colour/thickness-coded by its SHAP push. Null for stub-scored
+    # sessions or if no face/landmarks were detected.
+    facial_shape_diagram_url = Column(String, nullable=True)
+    # JSON-encoded list of {label, direction, magnitude} -- this image's
+    # SHAP values on the CNN's own pixels (shap.GradientExplainer), pooled
+    # into a 3x3 grid of regions and ranked. A second, cruder explanation
+    # kept alongside the named-feature one above, not instead of it.
+    pixel_shap_regions_json = Column(Text, nullable=True)
+    # Filename (under uploads/images/shap_diagrams/) of the pixel-region
+    # SHAP grid diagram -- the same region values as
+    # pixel_shap_regions_json, drawn directly on an enlarged copy of the
+    # photo with a 3x3 grid overlay and arrow callouts. Null for
+    # stub-scored sessions.
     shap_diagram_url = Column(String, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("DiagnosticSession", back_populates="images")
+
+
+class CombinedReport(Base):
+    """A doctor's side-by-side review of exactly two of a patient's prior
+    screening sessions (e.g. one questionnaire + one image screening),
+    with their own added commentary. Persisted so it can be reopened later,
+    not just a one-time PDF merge."""
+
+    __tablename__ = "combined_reports"
+    id = uuid_pk()
+    hospital_id = Column(GUID(), ForeignKey("hospitals.id"), nullable=False)
+    patient_id = Column(GUID(), ForeignKey("patients.id"), nullable=False)
+    session_a_id = Column(GUID(), ForeignKey("diagnostic_sessions.id"), nullable=False)
+    session_b_id = Column(GUID(), ForeignKey("diagnostic_sessions.id"), nullable=False)
+    comments = Column(Text, nullable=False, default="")
+    created_by = Column(GUID(), ForeignKey("staff_users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class AuditLog(Base):

@@ -8,19 +8,13 @@ a session was given.
 LOW_MAX = 0.34
 MODERATE_MAX = 0.67
 
-_RANGE_LABELS = {
-    "low": "under 34%",
-    "moderate": "34-66%",
-    "high": "67% and above",
-}
-
 _MEANINGS = {
-    "low": "few or no traits indicative of autism were identified",
-    "moderate": "some indicative traits were identified; clinical judgement is advised",
-    "high": "most consistent with autism-related traits; clinical referral is recommended",
+    "low": "few or no indicative traits",
+    "moderate": "some indicative traits; clinical judgement advised",
+    "high": "consistent with autism-related traits; referral recommended",
 }
 
-BAND_LEGEND = "Low: under 34%  ·  Moderate: 34-66%  ·  High: 67% and above"
+BAND_LEGEND = "Low: under 34%\nModerate: 34-66%\nHigh: 67% and above"
 
 
 def categorize(score: float) -> str:
@@ -29,10 +23,6 @@ def categorize(score: float) -> str:
     if score < MODERATE_MAX:
         return "moderate"
     return "high"
-
-
-def range_label(category: str) -> str:
-    return _RANGE_LABELS[category]
 
 
 def meaning(category: str) -> str:
@@ -46,9 +36,6 @@ def short_label(score: float) -> str:
 
 
 def describe_probability(score: float) -> str:
-    """e.g. '72% -- High range (67% and above): most consistent with autism-related traits'."""
+    """e.g. '72% (High): consistent with autism-related traits; referral recommended'."""
     category = categorize(score)
-    return (
-        f"{score * 100:.0f}% -- {category.title()} range ({range_label(category)}): "
-        f"{meaning(category)}"
-    )
+    return f"{score * 100:.0f}% ({category.title()}): {meaning(category)}"

@@ -61,6 +61,7 @@ export interface PatientListItem {
   name: string;
   dob?: string | null;
   external_patient_id?: string | null;
+  contact_number?: string | null;
   gender?: string | null;
   autism?: boolean | null;
   jaundice?: boolean | null;
@@ -92,6 +93,66 @@ export interface SessionSummary {
   model_version: string | null;
   assigned_doctor_id: string | null;
   created_at: string;
+}
+
+export interface SessionReportData {
+  id: string;
+  patient_name: string;
+  patient_dob: string | null;
+  patient_age_label: string | null;
+  patient_external_id: string | null;
+  hospital_name: string;
+  doctor_email: string | null;
+  session_type: string;
+  risk_score: number | null;
+  risk_category: string | null;
+  result_label: string | null;
+  result_tone: string | null;
+  model_version: string | null;
+  model_description: string;
+  created_at: string;
+  generated_at: string;
+  summary_stats: { label: string; value: string }[];
+  features: {
+    label: string;
+    value: string;
+    contributed_to_risk: boolean;
+    image_data_url: string | null;
+    heatmap_data_url: string | null;
+    facial_shape_diagram_data_url: string | null;
+    shap_diagram_data_url: string | null;
+    pixel_region_explanation: { label: string; direction: "increased" | "decreased"; magnitude: number }[];
+  }[];
+  explanation: {
+    label: string;
+    direction: "increased" | "decreased";
+    magnitude: number;
+    detail: string | null;
+  }[];
+  explanation_note: string;
+  other_factors: {
+    label: string;
+    direction: "increased" | "decreased";
+    magnitude: number;
+    detail: string | null;
+  }[];
+  note: string;
+}
+
+export interface CombinedReportSummary {
+  id: string;
+  patient_id: string;
+  patient_name: string;
+  session_ids: string[];
+  comments: string;
+  created_by_email: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CombinedReportData extends CombinedReportSummary {
+  hospital_name: string;
+  reports: SessionReportData[];
 }
 
 export const api = {
@@ -163,6 +224,7 @@ export const api = {
       name?: string;
       dob?: string;
       external_patient_id?: string;
+      contact_number?: string;
       gender?: string;
       autism?: boolean;
       jaundice?: boolean;
@@ -188,6 +250,29 @@ export const api = {
 
   regenerateHospitalApiKey: () =>
     request<{ api_key: string }>("/internal/hospital/api-key/regenerate", { method: "POST" }),
+
+  listMyHospitalUsers: (params?: { limit?: number; offset?: number }) =>
+    request<{ id: string; email: string; role: string }[]>(
+      `/internal/hospital/users${qs(params ?? {})}`
+    ),
+
+  createMyHospitalUser: (payload: { email: string; password: string; role: string }) =>
+    request<{ id: string; email: string; role: string }>("/internal/hospital/users", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateMyHospitalUser: (
+    userId: string,
+    payload: { email?: string; role?: string; password?: string }
+  ) =>
+    request<{ id: string; email: string; role: string }>(`/internal/hospital/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteMyHospitalUser: (userId: string) =>
+    request<void>(`/internal/hospital/users/${userId}`, { method: "DELETE" }),
 
   listHospitals: (params?: { search?: string; limit?: number; offset?: number }) =>
     request<Hospital[]>(`/internal/admin/hospitals${qs(params ?? {})}`),
@@ -275,7 +360,7 @@ export const api = {
   updateHospitalUser: (
     hospitalId: string,
     userId: string,
-    payload: { role?: string; password?: string }
+    payload: { email?: string; role?: string; password?: string }
   ) =>
     request<{ id: string; email: string; role: string }>(
       `/internal/admin/hospitals/${hospitalId}/users/${userId}`,
@@ -322,34 +407,25 @@ export const api = {
     ),
 
   getSessionReport: (sessionId: string) =>
-    request<{
-      id: string;
-      patient_name: string;
-      patient_dob: string | null;
-      patient_age_label: string | null;
-      patient_external_id: string | null;
-      hospital_name: string;
-      doctor_email: string | null;
-      session_type: string;
-      risk_score: number | null;
-      risk_category: string | null;
-      model_version: string | null;
-      model_description: string;
-      created_at: string;
-      generated_at: string;
-      summary_stats: { label: string; value: string }[];
-      features: {
-        label: string;
-        value: string;
-        contributed_to_risk: boolean;
-        image_data_url: string | null;
-        heatmap_data_url: string | null;
-        shap_diagram_data_url: string | null;
-      }[];
-      explanation: { label: string; direction: "increased" | "decreased"; magnitude: number }[];
-      explanation_note: string;
-      note: string;
-    }>(`/internal/sessions/${sessionId}/report`),
+    request<SessionReportData>(`/internal/sessions/${sessionId}/report`),
+
+  listCombinedReports: (patientId: string) =>
+    request<CombinedReportSummary[]>(`/internal/combined-reports${qs({ patient_id: patientId })}`),
+
+  createCombinedReport: (payload: { patient_id: string; session_ids: string[]; comments: string }) =>
+    request<CombinedReportData>("/internal/combined-reports", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getCombinedReport: (reportId: string) =>
+    request<CombinedReportData>(`/internal/combined-reports/${reportId}`),
+
+  updateCombinedReportComments: (reportId: string, comments: string) =>
+    request<CombinedReportSummary>(`/internal/combined-reports/${reportId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ comments }),
+    }),
 
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>("/internal/auth/change-password", {

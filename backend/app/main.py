@@ -10,10 +10,12 @@ from app.routers.internal import auth as internal_auth, patients as internal_pat
 from app.routers.internal import diagnose as internal_diagnose, admin as internal_admin
 from app.routers.internal import dashboard as internal_dashboard
 from app.routers.internal import hospital_api_key as internal_hospital_api_key
+from app.routers.internal import hospital_users as internal_hospital_users
 from app.routers.internal import questions as internal_questions
 from app.routers.internal import staff as internal_staff
 from app.routers.internal import cases as internal_cases
 from app.routers.internal import reports as internal_reports
+from app.routers.internal import combined_reports as internal_combined_reports
 from app.routers.internal import audit as internal_audit
 from app.routers.internal import platform_stats as internal_platform_stats
 from app.core.audit_middleware import AuditMiddleware
@@ -45,11 +47,13 @@ app.include_router(internal_diagnose.router)
 app.include_router(internal_admin.router)
 app.include_router(internal_dashboard.router)
 app.include_router(internal_hospital_api_key.router)
+app.include_router(internal_hospital_users.router)
 app.include_router(internal_questions.admin_router)
 app.include_router(internal_questions.live_router)
 app.include_router(internal_staff.router)
 app.include_router(internal_cases.router)
 app.include_router(internal_reports.router)
+app.include_router(internal_combined_reports.router)
 app.include_router(internal_audit.router)
 app.include_router(internal_audit.page_view_router)
 app.include_router(internal_platform_stats.router)
