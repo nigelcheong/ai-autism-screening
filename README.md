@@ -1,58 +1,56 @@
 # AI-Powered Early Autism Screening — Research Codebase
 
+<<<<<<< HEAD
 A preliminary **screening aid** that estimates whether a child aged 4–11 would
 benefit from formal autism assessment, and explains the reasoning behind each
 result. This repository holds the data preprocessing, dataset auditing, model
 training, calibration, evaluation and explainability code. The web application
 lives on a separate branch, [`sandeep-webapp`](#web-application).
+=======
+Data preprocessing, dataset auditing, model training, evaluation and
+explainability code for a screening-support prototype covering two modalities,
+questionnaire responses and facial images. The web application lives in a
+separate repository.
+>>>>>>> 5a08fe06229e80b4a1e51de8e568ffd58bbf7329
 
-> **This is not a clinical diagnostic tool.** Its output is a recommendation to
-> seek further assessment. Screening operates at population prevalence, where
-> positive predictive value falls sharply even for instruments with high
-> sensitivity and specificity — so performance on balanced research samples
-> overstates field utility. Error costs are asymmetric, and the operating
-> threshold is tuned toward sensitivity as an explicit, stated choice.
+> This is a research prototype, not a clinical diagnostic tool, and no output of
+> it should be read as a diagnosis.
 
-**Prediction target:** binary screen-positive / screen-negative.
-**Cohort:** children aged 4–11, in both streams. Validated instruments differ by
-age in item content and informant, so the two streams must declare the same band.
+**Prediction target.** Binary screen-positive / screen-negative.
+
+**Cohort.** Children aged 4–11. The Q-CHAT-10 toddler tables use a different
+instrument and age band and are kept as supplementary material; no model mixes
+toddler and child rows.
 
 ---
 
-## The two streams
+## Repository scope
 
-The streams are trained, evaluated and reported **independently** — no public
-dataset links questionnaire responses to facial images of the same individuals,
-so there is no fusion layer and no learned combination rule.
+| In this repository | Elsewhere |
+|---|---|
+| Preprocessing, splits and seeds | Web application front end and hosting |
+| Dataset audits for both modalities | Deployment configuration and credentials |
+| Model training, evaluation, explainability | Raw datasets, which are not committed |
+| Serialised questionnaire models under `models/` | |
 
-### Questionnaire stream — `experiments/questionnaire_models/` — primary
+---
 
-Tabular classification over AQ-10-Child item responses. This stream is primary on
-evidential grounds: its inputs derive from a validated instrument. Models are
-selected by comparison rather than assumed — penalised logistic regression,
-depth-limited decision tree, gradient boosting / random forest, and a small MLP.
-Explanation is SHAP attribution over items, surfaced to the user, with stability
-checked across resamples.
+## Datasets
 
-> ⚠️ **Circularity hazard.** The `result` column is the AQ-10 summed score and
-> `Class/ASD` is a threshold applied to it. **`result` must be dropped**, or the
-> task degenerates into recovering the scoring rule. Any accuracy above ~95%
-> should trigger a leakage check before celebration.
+Raw data is not committed. Every dataset must be obtained locally before the
+corresponding notebooks will run.
 
-### Facial-image stream — secondary, gated
+### Questionnaire
 
-Facial image classification, **conditional on the Phase 0 audit passing**. The
-dataset's cases and controls come from different sources, so a classifier can
-score highly by learning acquisition context rather than facial phenotype. Three
-probes decide whether this stream is a screening component or a documented
-negative result — either outcome is a publishable finding:
-
-| Probe | Folder | Method | Interpretation |
+| Dataset | Instrument | Size | Source |
 |---|---|---|---|
-| Blur | `experiments/blurred_images/` | Train on images blurred beyond visual recognisability | Above chance ⇒ signal is not facial |
-| Background | `experiments/background_images/` | Mask detected faces, train on the remainder | Above chance ⇒ signal is context |
-| Metadata | `experiments/metadata_probe/` | Compare dimensions, file size, JPEG quality, colour stats, EXIF by class | Systematic difference ⇒ separate acquisition |
+| UCI Autism Screening Data for Children, id 419 | AQ-10-Child | ~292 rows | Fetched by `questionnaire.ipynb` via `ucimlrepo` |
+| Thabtah Combined 4–11 | AQ-10-Child | ~960 rows after removing exact copies | `[SOURCE: confirm the download location]` |
+| Hugging Face ASD V3, filtered to ages 4–11 | AQ-10 | 864 rows after de-duplication | `[SOURCE: confirm — likely huggingface.co/datasets/rescommons/ASD_V3_all_ages]` |
+| Q-CHAT-10 toddlers, New Zealand | Q-CHAT-10 | 1,054 rows | <https://www.kaggle.com/datasets/fabdelja/autism-screening-for-toddlers> |
+| Q-CHAT-10 toddlers, NZ and Saudi merge | Q-CHAT-10 | 1,560 rows | `[SOURCE: confirm the Saudi component]` |
 
+<<<<<<< HEAD
 The unmodified-image model itself lives in `experiments/intact_images/`, and only
 gets trained once the three audits above clear. Perceptual-hash deduplication
 runs across classes alongside these. Grad-CAM is retained as an **internal
@@ -142,6 +140,9 @@ values are coded `?`, concentrated in `ethnicity` and `relation`.
 No manual download is needed. `questionnaire.ipynb` fetches the dataset directly
 through the [`ucimlrepo`](https://pypi.org/project/ucimlrepo/) package and writes
 it to a CSV under `data/raw/questionnaire/`:
+=======
+The UCI set needs no manual download:
+>>>>>>> 5a08fe06229e80b4a1e51de8e568ffd58bbf7329
 
 ```bash
 pip install ucimlrepo
@@ -149,56 +150,148 @@ pip install ucimlrepo
 
 ```python
 from ucimlrepo import fetch_ucirepo
-autism_child = fetch_ucirepo(id=419)          # UCI dataset 419
+autism_child = fetch_ucirepo(id=419)
 ```
 
-Run the notebook once to populate `data/raw/questionnaire/` before any code in
-`experiments/questionnaire_models/` will work.
+Run `questionnaire.ipynb` once to populate `data/raw/questionnaire/` before any
+other questionnaire notebook will work.
 
-### Facial images — Mendeley `f9dycfvwbt` v2
+Missing values in the UCI table are coded `?` and are concentrated in
+`ethnicity` and `relation`.
 
-<https://data.mendeley.com/datasets/f9dycfvwbt/2>
+**Preprocessing note.** The `result` column is the summed AQ-10 item score and
+`Class/ASD` is a threshold applied to that sum, so `result` is dropped before
+fitting. The equivalent column in the Q-CHAT-10 tables is `Qchat-10-Score` and
+is dropped on the same basis.
 
-2,940 facial images of children, two classes, three folders. Download manually
-and unpack into `data/raw/images/`.
+### Facial images
 
-**Provenance is a known problem, verified rather than assumed.** This set
-re-hosts the Kaggle ASD Children Facial Image Dataset; its original author stated
-the autistic images were collected by internet search from online autism
-communities, published work describes it as low-fidelity, and its racial
-composition is roughly 89% White children to 11% children of colour. Aggregate
-accuracy therefore conceals who the model fails — report stratified performance
-where feasible, and treat the Phase 0 audit as a gate, not a formality.
+| Dataset | Size | Source |
+|---|---|---|
+| Mendeley `f9dycfvwbt`, version 3 | 2,940 images, two classes, three folders | <https://data.mendeley.com/datasets/f9dycfvwbt/3> |
 
----
+Download manually and unpack into `data/raw/images/`. The archive supplies a
+train, test and validation partition; the audit notebooks pool and re-split it.
 
-## Working order
-
-1. **Phase 0 audit first.** Run the questionnaire circularity/base-rate check
-   (inside `experiments/questionnaire_models/`) and the image-side audits
-   (`experiments/metadata_probe/`, `experiments/blurred_images/`,
-   `experiments/background_images/`) before any modelling. The image audits
-   determine whether `experiments/intact_images/` is built at all.
-2. Hold out a stratified test set before anything else. Split images by subject
-   where an identifier permits, and augment only after splitting.
-3. Train and compare; calibrate the winner.
-4. Report sensitivity, specificity, PPV and NPV at realistic prevalence,
-   calibration (ECE and reliability curve), the chosen operating threshold with
-   its cost stated, and the mean and spread across cross-validation repeats.
-   Below ~300 records, single-split estimates vary by several points on
-   reshuffling alone — a single accuracy figure is not a result.
-
-**Avoid** TabNet, FT-Transformer and similar deep tabular architectures; they
-need one to two orders of magnitude more data than ~292 rows. Use Platt scaling
-rather than isotonic regression for the same reason.
+Perceptual-hash clustering is used to group near-duplicate images, since the
+archive carries no subject identifier.
 
 ---
 
-## Ethics and data handling
+## Folder structure
 
-Facial photographs of children are biometric information about minors. Retention,
-transfer and reuse for retraining must be settled before the image stream is
-built, and unit ethics approval — if required — has a lead time. Inferring a
-neurodevelopmental condition from facial appearance sits close to a discredited
-tradition, and favourable metrics do not answer that objection; it is addressed
-explicitly in the accompanying paper.
+```
+.
+├── configs/                     # paths and settings
+├── data/
+│   ├── raw/                     # source data, not committed, read only
+│   │   ├── questionnaire/       # written by questionnaire.ipynb
+│   │   └── images/              # Mendeley archive, unpacked here
+│   ├── processed/               # cleaned and derived data
+│   └── splits/                  # versioned split definitions and seeds
+├── experiments/                 # one folder per approach, code and results together
+├── models/                      # serialised questionnaire models (.pkl)
+├── notebooks/                   # call src/ modules step by step, display results
+├── outputs/                     # predictions, figures, logs
+├── reports/
+│   ├── proposal/
+│   └── final_report/
+└── src/                         # shared code imported by notebooks and experiments
+    ├── data/                    # loading, preprocessing
+    ├── models/                  # model definitions, feature extraction
+    └── evaluation/              # metrics, cross-validation
+```
+
+Logic lives in `.py` modules under `src/`. Notebooks call those modules and
+display results. Machinery with no dataset, modality or model family in its
+name belongs in `src/`; anything that names one belongs in its own experiment
+folder.
+
+---
+
+## Notebooks
+
+### Facial-image stream
+
+| Notebook | What it produces |
+|---|---|
+| `facialimages.ipynb` | Metadata probe and the intact-image frozen probe |
+| `blurred_images.ipynb` | Blur arm and the colour-only floor |
+| `background_images.ipynb` | Retained with its defect documented; its result is excluded from all reported figures |
+| `face_crop_blur.ipynb` | Face crop and the progressive blur series |
+| `face_landmarks.ipynb` | Landmark, framing and pose arms |
+| `why_not_faces.ipynb` | Named-feature model, out-of-fold SHAP, normalised Grad-CAM |
+
+### Questionnaire stream
+
+| Notebook | What it produces |
+|---|---|
+| `questionnaire.ipynb` | UCI 292 exploratory analysis, circularity check, nested CV, SHAP, child `.pkl` |
+| `questionnaire_thabtah_combined_4to11.ipynb` | Combined 4–11 exploratory analysis, nested CV, SHAP, second child `.pkl` |
+| `questionnaire_hf.ipynb` | Hugging Face 4–11 audit |
+| `questionnaire_toddlers_months.ipynb` | New Zealand Q-CHAT-10, nested CV, SHAP, toddler `.pkl` |
+| `questionnaire_toddlers_nz_saudi.ipynb` | NZ and Saudi Q-CHAT-10, second toddler `.pkl` |
+
+---
+
+## Setup
+
+```bash
+git clone [REPO URL]
+cd [REPO NAME]
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+`[SETUP: state the Python version, and whether a CUDA-capable GPU is required
+for the fine-tuned image arms or only recommended.]`
+
+---
+
+## Running
+
+1. Obtain the datasets listed above and place them under `data/raw/`.
+2. Run `questionnaire.ipynb` first on the questionnaire side, since it writes the
+   CSV the other questionnaire notebooks read.
+3. Run the facial-image notebooks in the order listed in the table above. Each
+   writes its artefacts to its own directory under `outputs/`.
+
+`[RUNTIME: state the approximate wall-clock time for the fine-tuned image arms.]`
+
+---
+
+## Evaluation protocol
+
+| Stream | Protocol |
+|---|---|
+| Questionnaire | Stratified 20% hold-out (`random_state=42`), then nested cross-validation on the remainder, outer stratified 5-fold for the reported score and inner stratified 3-fold `GridSearchCV` for tuning |
+| Facial images | 5×10 repeated stratified cross-validation with grouped splits over the pooled, deduplicated dataset, replacing the archive's supplied partition |
+
+Models compared on the questionnaire side are penalised logistic regression, a
+depth-limited decision tree, random forest and histogram gradient boosting. Deep
+tabular architectures and a small MLP were out of scope for the sample size.
+
+Reported metrics are ROC-AUC with its spread for cross-validated figures,
+hold-out sensitivity and specificity, and positive and negative predictive value
+at assumed prevalences of 1% and 2%. Calibration was not assessed.
+
+---
+
+## Conventions
+
+- Everything under `data/raw/` is read only. Derived artefacts are written
+  elsewhere.
+- Split definitions and random seeds are versioned under `data/splits/`.
+- Face images rendered in notebook outputs are cleared before any commit, so a
+  freshly cloned repository shows empty image cells until the notebooks are
+  re-run against a local copy of the archive.
+- Each experiment writes to its own directory under `outputs/`.
+
+---
+
+## Reports
+
+| Report | Location |
+|---|---|
+| Research report | `reports/final_report/` · `[LINK]` |
+| Final Delivery Report | `reports/final_report/` · `[LINK]` |
