@@ -46,7 +46,7 @@ def repeated_stratified_cv(
         DataFrame with one row per fold: ``repeat``, ``fold``, and every
         metric from :func:`src.evaluation.metrics.fold_metrics`.
     """
-    del groups  # not yet used -- see docstring.
+    del groups  # deliberately ignored -- see docstring.
 
     rng = np.random.default_rng(seed)
     repeat_seeds = rng.integers(0, 2**31 - 1, size=n_repeats)
