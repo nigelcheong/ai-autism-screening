@@ -1,17 +1,10 @@
 # AI-Powered Early Autism Screening — Research Codebase
 
-<<<<<<< HEAD
 A preliminary **screening aid** that estimates whether a child aged 4–11 would
 benefit from formal autism assessment, and explains the reasoning behind each
 result. This repository holds the data preprocessing, dataset auditing, model
 training, calibration, evaluation and explainability code. The web application
 lives on a separate branch, [`sandeep-webapp`](#web-application).
-=======
-Data preprocessing, dataset auditing, model training, evaluation and
-explainability code for a screening-support prototype covering two modalities,
-questionnaire responses and facial images. The web application lives in a
-separate repository.
->>>>>>> 5a08fe06229e80b4a1e51de8e568ffd58bbf7329
 
 > This is a research prototype, not a clinical diagnostic tool, and no output of
 > it should be read as a diagnosis.
@@ -50,7 +43,6 @@ corresponding notebooks will run.
 | Q-CHAT-10 toddlers, New Zealand | Q-CHAT-10 | 1,054 rows | <https://www.kaggle.com/datasets/fabdelja/autism-screening-for-toddlers> |
 | Q-CHAT-10 toddlers, NZ and Saudi merge | Q-CHAT-10 | 1,560 rows | `[SOURCE: confirm the Saudi component]` |
 
-<<<<<<< HEAD
 The unmodified-image model itself lives in `experiments/intact_images/`, and only
 gets trained once the three audits above clear. Perceptual-hash deduplication
 runs across classes alongside these. Grad-CAM is retained as an **internal
@@ -140,9 +132,6 @@ values are coded `?`, concentrated in `ethnicity` and `relation`.
 No manual download is needed. `questionnaire.ipynb` fetches the dataset directly
 through the [`ucimlrepo`](https://pypi.org/project/ucimlrepo/) package and writes
 it to a CSV under `data/raw/questionnaire/`:
-=======
-The UCI set needs no manual download:
->>>>>>> 5a08fe06229e80b4a1e51de8e568ffd58bbf7329
 
 ```bash
 pip install ucimlrepo
