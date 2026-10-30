@@ -4,7 +4,7 @@ A preliminary **screening aid** that estimates whether a child aged 4–11 would
 benefit from formal autism assessment, and explains the reasoning behind each
 result. This repository holds the data preprocessing, dataset auditing, model
 training, calibration, evaluation and explainability code. The web application
-lives elsewhere.
+lives on a separate branch, [`sandeep-webapp`](#web-application).
 
 > **This is not a clinical diagnostic tool.** Its output is a recommendation to
 > seek further assessment. Screening operates at population prevalence, where
@@ -95,6 +95,36 @@ pipeline. Machinery with no dataset, modality or model family in its name
 (loading, feature extraction, metrics, cross-validation) belongs in `src/` and
 is imported by whichever experiments need it; anything that names one belongs
 in that experiment's own folder instead.
+
+---
+
+## Web application
+
+The screening web app is on the `sandeep-webapp` branch. That branch is a
+**separate codebase with no shared git history** with `main`, so it is never
+merged here. Check it out on its own:
+
+```bash
+git fetch origin sandeep-webapp
+git worktree add ../autism-screening-webapp sandeep-webapp
+```
+
+- **Stack:** React + TypeScript + Tailwind frontend (`frontend/`) and a
+  FastAPI backend (`backend/`), deployed as two Docker Hugging Face Spaces,
+  with Supabase Postgres and file storage.
+- **Models:** the backend serves model artifacts trained in this repository,
+  committed as `.pkl` files under `backend/app/ml/`. They include the
+  questionnaire logistic regression, the named-feature facial model, and a
+  cross-validation fold of the fine-tuned CNN. Its named-feature facial
+  explanation reproduces the `experiments/why_not_faces/` feature set.
+  Retraining a model here does **not** update the app: the new artifact has to
+  be copied across by hand.
+- **Setup:** see `PROJECT_SETUP.md` on that branch. Copy `backend/.env.example`
+  and `frontend/.env.example` to `.env`. `start_all.bat` contains hard-coded
+  local paths, so edit them before running it.
+
+The screening caveats above apply to the app's output too. In particular, the
+facial-image stream stays gated on the Phase 0 audit.
 
 ---
 
